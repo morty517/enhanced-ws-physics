@@ -76,6 +76,10 @@ bool isSand() {
 #define CELL_AIR 0u
 #define CELL_FLUID 1u
 #define CELL_SOLID 2u
+// Set on water cells packed with grains of a granular region (sand, gravel...): solid for the water solver, moving with the
+// grains' mean velocity taken from the coupling buffer. Bits 8..15 still hold an entity index for entity-occupied cells.
+#define CELL_GRANULAR_BIT 0x40000000u
+const float COUPLE_FP = 4096.0;
 
 const float FP_SCALE = 65536.0;
 

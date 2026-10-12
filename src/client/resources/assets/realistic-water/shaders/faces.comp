@@ -6,6 +6,13 @@ layout(std430, binding = 2) writeonly buffer Vel { float vel[]; };
 layout(std430, binding = 3) writeonly buffer VelOld { float velOld[]; };
 layout(std430, binding = 4) writeonly buffer Valid { uint valid[]; };
 layout(std430, binding = 5) readonly buffer Flags { uint cellFlags[]; };
+layout(std430, binding = 6) readonly buffer Couple { int couple[]; };
+
+float grainVel(ivec3 c, int comp) {
+    int k = cellIndex(c) * 4;
+    int n = couple[k];
+    return n > 0 ? float(couple[k + 1 + comp]) / COUPLE_FP / float(n) : 0.0;
+}
 
 uint flagsAt(ivec3 c) {
     return inBox(c) ? cellFlags[cellIndex(c)] : CELL_AIR;
@@ -29,10 +36,18 @@ void main() {
     uint fb = flagsAt(f);
     uint ok = w > 0 ? 1u : 0u;
     if ((fa & 0xFFu) == CELL_SOLID || (fb & 0xFFu) == CELL_SOLID) {
-        int ea = int(fa >> 8) - 1;
-        int eb = int(fb >> 8) - 1;
+        int ea = int((fa >> 8) & 0xFFu) - 1;
+        int eb = int((fb >> 8) & 0xFFu) - 1;
         int e = ea >= 0 ? ea : eb;
-        u = e >= 0 ? getAxis(entVel(e), comp) : 0.0;
+        if (e >= 0) {
+            u = getAxis(entVel(e), comp);
+        } else if ((fa & CELL_GRANULAR_BIT) != 0u) {
+            u = grainVel(f - axisVec(comp), comp);
+        } else if ((fb & CELL_GRANULAR_BIT) != 0u) {
+            u = grainVel(f, comp);
+        } else {
+            u = 0.0;
+        }
         ok = 1u;
     }
     vel[i] = u;

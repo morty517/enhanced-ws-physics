@@ -129,6 +129,16 @@ public final class WaterSettings {
 	public static int gravelGrainsPerParticle = 6;
 	public static float gravelBrightness = 1.0F;
 
+	// Coupling between fluids and granular materials.
+	public static boolean coupling = true;
+	/** Fraction of a fully packed cell's grains above which a fluid cell counts as solid (moving with the grains). */
+	public static float couplingSolidFraction = 0.5F;
+	/** How fast submerged sand / gravel takes on the water's velocity (1/s). */
+	public static float sandWaterDrag = 6.0F;
+	public static float gravelWaterDrag = 2.5F;
+	/** Fraction of gravity cancelled for submerged grains (water/grain density ratio). */
+	public static float sandBuoyancy = 0.6F;
+
 	public static String ffmpeg = "";
 	public static boolean renderFreezeWorld = true;
 	public static boolean renderSteadyPreview = true;

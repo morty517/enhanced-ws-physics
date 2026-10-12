@@ -31,6 +31,11 @@ import net.minecraft.world.phys.Vec3;
 public final class SelfTest {
 	private static final boolean ENABLED = Boolean.getBoolean("realisticwater.selftest");
 	private static final int SETTLE_TICKS = 60;
+	/** -Drealisticwater.selftest.scene=pit: dig a 5x5x3 pit in front of the player, fill it with water and drop sand into it. */
+	private static final boolean PIT = "pit".equals(System.getProperty("realisticwater.selftest.scene"));
+	private static final float PITCH = PIT ? 62.0F : 25.0F;
+	private static boolean splashShot;
+	private static net.minecraft.core.BlockPos pitOrigin;
 
 	private enum Stage { TITLE, LOADING, SETTLE, WATER, TURN, SAND, DONE }
 
@@ -81,17 +86,34 @@ public final class SelfTest {
 			}
 			case SETTLE -> {
 				mc.player.setYRot(0.0F);
-				mc.player.setXRot(25.0F);
+				mc.player.setXRot(PITCH);
 				if (ticks == 1) {
 					// Changing the resolution makes WaterWorld rebuild (and drop) every region on its next tick, so do it well before
 					// spawning anything.
 					set("resolution", System.getProperty("realisticwater.selftest.resolution", "4"));
 					set("sandResolution", System.getProperty("realisticwater.selftest.sandResolution", "6"));
+					set("coupling", System.getProperty("realisticwater.selftest.coupling", "true"));
+				}
+				if (PIT && ticks == 5) {
+					var bp = mc.player.blockPosition();
+					pitOrigin = bp;
+					mc.player.connection.sendCommand(String.format("fill %d %d %d %d %d %d minecraft:air",
+						bp.getX() - 2, bp.getY() - 3, bp.getZ() + 4, bp.getX() + 2, bp.getY() - 1, bp.getZ() + 8));
+					// Spectators float and are ignored by the water, so the camera can hang right above the pit.
+					mc.player.connection.sendCommand("gamemode spectator");
+				}
+				if (PIT && ticks == 10) {
+					mc.player.connection.sendCommand(String.format("tp @s %d.5 %d %d.5 0 %d",
+						pitOrigin.getX(), pitOrigin.getY() + 3, pitOrigin.getZ() + 3, (int) PITCH));
 				}
 				if (ticks >= SETTLE_TICKS) {
-					double size = Double.parseDouble(System.getProperty("realisticwater.selftest.waterSize", "2"));
-					drop(mc, Material.WATER, size, -2.5);
-					drop(mc, Material.MILK, size, 2.5);
+					double size = Double.parseDouble(System.getProperty("realisticwater.selftest.waterSize", PIT ? "3.5" : "2"));
+					if (PIT) {
+						dropAt(mc, Material.WATER, size, pitCenter(mc).add(0.0, 2.5, 0.0));
+					} else {
+						drop(mc, Material.WATER, size, -2.5);
+						drop(mc, Material.MILK, size, 2.5);
+					}
 					RealisticWater.LOGGER.warn("[selftest] dropped water ball");
 					stage = Stage.WATER;
 					frameMark = frames();
@@ -100,7 +122,7 @@ public final class SelfTest {
 			}
 			case WATER -> {
 				mc.player.setYRot(0.0F);
-				mc.player.setXRot(25.0F);
+				mc.player.setXRot(PITCH);
 				logProgress();
 				if (frames() - frameMark >= Integer.getInteger("realisticwater.selftest.frames", 90)) {
 					shot(mc, "rw-selftest-water.png");
@@ -114,16 +136,20 @@ public final class SelfTest {
 			case TURN -> {
 				// Same water seen from a turned camera: screen-space artefacts stay put, world features move.
 				mc.player.setYRot(25.0F);
-				mc.player.setXRot(25.0F);
+				mc.player.setXRot(PITCH);
 				if (frames() - frameMark >= 3) {
 					shot(mc, "rw-selftest-water-turned.png");
 					mc.player.setYRot(0.0F);
 					if (Boolean.getBoolean("realisticwater.selftest.clip")) {
 						RealisticWater.LOGGER.warn("[selftest] clip: {}", me.skaffy.client.water.ClipRecorder.get().start(0.5, 10));
 					}
-					drop(mc, Material.SAND, 1.5, 3.5);
-					drop(mc, Material.RED_SAND, 1.5, 0.0);
-					drop(mc, Material.GRAVEL, 1.5, -3.5);
+					if (PIT) {
+						dropAt(mc, Material.SAND, 1.5, pitCenter(mc).add(0.0, 3.5, 0.0));
+					} else {
+						drop(mc, Material.SAND, 1.5, 3.5);
+						drop(mc, Material.RED_SAND, 1.5, 0.0);
+						drop(mc, Material.GRAVEL, 1.5, -3.5);
+					}
 					RealisticWater.LOGGER.warn("[selftest] dropped sand cube");
 					stage = Stage.SAND;
 					frameMark = frames();
@@ -134,8 +160,12 @@ public final class SelfTest {
 			}
 			case SAND -> {
 				mc.player.setYRot(0.0F);
-				mc.player.setXRot(25.0F);
+				mc.player.setXRot(PITCH);
 				logProgress();
+				if (!splashShot && frames() - frameMark >= 12) {
+					splashShot = true;
+					shot(mc, "rw-selftest-splash.png");
+				}
 				if (frames() - frameMark >= Integer.getInteger("realisticwater.selftest.frames", 90)) {
 					shot(mc, "rw-selftest-sand.png");
 					RealisticWater.LOGGER.warn("[selftest] RESULT {} | {}", WaterWorld.get().failed() ? "FAILED" : "OK", WaterWorld.get().statsLine());
@@ -163,6 +193,17 @@ public final class SelfTest {
 			lastLoggedFrame = f;
 			RealisticWater.LOGGER.warn("[selftest] frame {} | {}", f, WaterWorld.get().statsLine());
 		}
+	}
+
+	private static Vec3 pitCenter(Minecraft mc) {
+		var bp = pitOrigin != null ? pitOrigin : mc.player.blockPosition();
+		return new Vec3(bp.getX() + 0.5, bp.getY() - 1.5, bp.getZ() + 6.5);
+	}
+
+	private static void dropAt(Minecraft mc, Material material, double size, Vec3 center) {
+		double half = size * 0.5;
+		WaterWorld.get().addEmitter(new WaterRegion.Emitter(center.x - half, center.y - half, center.z - half,
+			center.x + half, center.y + half, center.z + half, 0, 0, 0), material);
 	}
 
 	private static void drop(Minecraft mc, Material material, double size, double sideways) {

@@ -84,8 +84,8 @@ public final class WaterRegion implements AutoCloseable {
 				new ComputeProgram("emit.comp", U, S, S, S, S),
 				new ComputeProgram("clear_box.comp", U, S, S, S, S),
 				new ComputeProgram("p2g.comp", U, S, S, S, S, S),
-				new ComputeProgram("classify.comp", U, S, S, S),
-				new ComputeProgram("faces.comp", U, S, S, S, S, S),
+				new ComputeProgram("classify.comp", U, S, S, S, S),
+				new ComputeProgram("faces.comp", U, S, S, S, S, S, S),
 				new ComputeProgram("divergence.comp", U, S, S, S, S, S),
 				new ComputeProgram("project.comp", U, S, S, S, S),
 				new ComputeProgram("extrapolate.comp", U, S, S, S),
@@ -100,9 +100,10 @@ public final class WaterRegion implements AutoCloseable {
 				new ComputeProgram("blockfill.comp", U, S, S, S, S),
 				new ComputeProgram("mpm_clear.comp", U, S, S),
 				new ComputeProgram("mpm_p2g.comp", U, S, S, S, S, S),
-				new ComputeProgram("mpm_grid.comp", U, S, S),
+				new ComputeProgram("mpm_grid.comp", U, S, S, S, S),
 				new ComputeProgram("mpm_g2p.comp", U, S, S, S, S, S, S, S),
-				new ComputeProgram("blockfill.comp", Map.of("MPM", "1"), U, S, S, S, S)
+				new ComputeProgram("blockfill.comp", Map.of("MPM", "1"), U, S, S, S, S),
+				new ComputeProgram("couple_splat.comp", U, S, S, S)
 			};
 		}
 		return programs;
@@ -153,6 +154,11 @@ public final class WaterRegion implements AutoCloseable {
 	GlBuf pressure;
 	GlBuf divergence;
 	GlBuf potential;
+	/** Fluid regions: grains of overlapping granular regions binned per cell (count, velocity sum), see couple_splat.comp. */
+	@Nullable GlBuf couple;
+	/** Set each frame by WaterWorld: granular regions overlapping this fluid region / the fluid region this granular region is in. */
+	final List<WaterRegion> grainPartners = new ArrayList<>();
+	@Nullable WaterRegion waterPartner;
 	GlBuf[] wwCount = new GlBuf[2];
 	private @Nullable GlBuf mpmGrid;
 	private final GlBuf[] mpmState = new GlBuf[2];
@@ -458,6 +464,7 @@ public final class WaterRegion implements AutoCloseable {
 			this.pressure = GlBuf.device(this.numCells * 4L, 0);
 			this.divergence = GlBuf.device(this.numCells * 4L, 0);
 			this.potential = GlBuf.device(this.numCells * 8L, 0);
+			this.couple = GlBuf.device(this.numCells * 16L, 0);
 			this.wwCount[0] = GlBuf.device(this.numCells * 4L, 0);
 			this.wwCount[1] = GlBuf.device(this.numCells * 4L, 0);
 			this.solver = new PressureSolver(this.nx, this.ny, this.nz);
@@ -469,7 +476,7 @@ public final class WaterRegion implements AutoCloseable {
 	private void releaseGrid() {
 		for (AutoCloseable c : new AutoCloseable[]{
 			this.accum, this.vel, this.velOld, this.valid0, this.valid1, this.cellCount, this.cellDens, this.cellFlags, this.staticSolid,
-			this.pressure, this.divergence, this.potential, this.wwCount[0], this.wwCount[1], this.mpmGrid, this.solver, this.mesher
+			this.pressure, this.divergence, this.potential, this.wwCount[0], this.wwCount[1], this.mpmGrid, this.solver, this.mesher, this.couple
 		}) {
 			if (c != null) {
 				Gl.destroyLater(c);
@@ -664,6 +671,35 @@ public final class WaterRegion implements AutoCloseable {
 		return stale;
 	}
 
+	/** Fluid regions: bins the grains of every partner granular region into {@link #couple} (before the fluid steps). */
+	void recordCoupling(Cmd cb, Desc ubo) {
+		if (this.couple == null) {
+			return;
+		}
+		this.couple.fill(cb, 0);
+		Gl.barrier(cb);
+		ComputeProgram splat = programs()[23];
+		for (WaterRegion s : this.grainPartners) {
+			if (!s.initialized || !s.hasWindow) {
+				continue;
+			}
+			splat.bind(cb, ubo, Desc.ssbo(s.particles[s.cur]), Desc.ssbo(s.counters), Desc.ssbo(this.couple));
+			splat.push(cb, C_FLUID + s.cur, 0, 0, 0,
+				Program.f((s.ox - this.ox) * this.res), Program.f((s.oy - this.oy) * this.res), Program.f((s.oz - this.oz) * this.res),
+				Program.f((float) this.res / s.res));
+			splat.dispatchIndirect(cb, s.args, ARGS_FLUID_DISPATCH);
+		}
+		Gl.barrier(cb);
+	}
+
+	/** Window overlap in blocks (both regions must have a window). */
+	boolean windowOverlaps(WaterRegion o) {
+		return this.hasWindow && o.hasWindow
+			&& this.ox < o.ox + o.sx && o.ox < this.ox + this.sx
+			&& this.oy < o.oy + o.sy && o.oy < this.oy + this.sy
+			&& this.oz < o.oz + o.sz && o.oz < this.oz + this.sz;
+	}
+
 	void queueAbsorb(WaterRegion other) {
 		this.absorbQueue.add(other);
 	}
@@ -828,7 +864,8 @@ public final class WaterRegion implements AutoCloseable {
 		boolean sand = this.material.granular();
 		if (sand) {
 			ComputeProgram classify = programs()[4];
-			classify.bind(cb, ubo, Desc.ssbo(this.staticSolid), Desc.ssbo(this.cellCount), Desc.ssbo(this.cellFlags));
+			classify.bind(cb, ubo, Desc.ssbo(this.staticSolid), Desc.ssbo(this.cellCount), Desc.ssbo(this.cellFlags),
+				Desc.ssbo(this.couple != null ? this.couple : this.cellCount));
 			classify.dispatch(cb, ComputeProgram.groups(boxCells(b), 256), 1, 1);
 			Gl.barrier(cb);
 		}
@@ -876,11 +913,12 @@ public final class WaterRegion implements AutoCloseable {
 		p[3].dispatchIndirect(cb, this.args, ARGS_FLUID_DISPATCH);
 		Gl.barrier(cb);
 
-		p[4].bind(cb, ubo, Desc.ssbo(this.staticSolid), Desc.ssbo(this.cellCount), Desc.ssbo(this.cellFlags));
+		p[4].bind(cb, ubo, Desc.ssbo(this.staticSolid), Desc.ssbo(this.cellCount), Desc.ssbo(this.cellFlags), Desc.ssbo(this.couple));
 		p[4].dispatch(cb, cellGroups, 1, 1);
 		Gl.barrier(cb);
 
-		p[5].bind(cb, ubo, Desc.ssbo(this.accum), Desc.ssbo(this.vel), Desc.ssbo(this.velOld), Desc.ssbo(this.valid0), Desc.ssbo(this.cellFlags));
+		p[5].bind(cb, ubo, Desc.ssbo(this.accum), Desc.ssbo(this.vel), Desc.ssbo(this.velOld), Desc.ssbo(this.valid0), Desc.ssbo(this.cellFlags),
+			Desc.ssbo(this.couple));
 		p[5].dispatch(cb, faceGroups, 1, 1);
 		Gl.barrier(cb);
 
@@ -955,7 +993,19 @@ public final class WaterRegion implements AutoCloseable {
 		p[19].dispatchIndirect(cb, this.args, ARGS_FLUID_DISPATCH);
 		Gl.barrier(cb);
 
-		p[20].bind(cb, ubo, Desc.ssbo(this.mpmGrid), Desc.ssbo(this.staticSolid));
+		WaterRegion w = this.waterPartner;
+		boolean wet = w != null && w.vel != null && w.cellCount != null;
+		p[20].bind(cb, ubo, Desc.ssbo(this.mpmGrid), Desc.ssbo(this.staticSolid),
+			Desc.ssbo(wet ? w.vel : this.mpmGrid), Desc.ssbo(wet ? w.cellCount : this.cellCount));
+		if (wet) {
+			float scale = (float) w.res / this.res;
+			p[20].push(cb, w.nx, w.ny, w.nz, 1,
+				Program.f((this.ox - w.ox) * w.res), Program.f((this.oy - w.oy) * w.res), Program.f((this.oz - w.oz) * w.res), Program.f(scale),
+				Program.f(this.material == Material.GRAVEL ? WaterSettings.gravelWaterDrag : WaterSettings.sandWaterDrag),
+				Program.f(WaterSettings.sandBuoyancy));
+		} else {
+			p[20].push(cb, 0, 0, 0, 0);
+		}
 		p[20].dispatch(cb, cellGroups, 1, 1);
 		Gl.barrier(cb);
 

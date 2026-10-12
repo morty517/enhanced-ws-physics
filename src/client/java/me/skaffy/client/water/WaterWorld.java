@@ -687,6 +687,9 @@ public final class WaterWorld {
 		while (active.size() > MAX_REGIONS) {
 			active.removeLast();
 		}
+		// Fluids step first: they bin the grains of granular regions (as of last frame) before stepping, and granular regions
+		// then read this frame's fluid velocities for drag and buoyancy.
+		active.sort(java.util.Comparator.comparing(r -> r.material.granular()));
 
 		int steps = 0;
 		float stepDt = frameDt;
@@ -761,6 +764,10 @@ public final class WaterWorld {
 			WaterRegion r = active.get(i);
 			r.planWindow(level, this.solids(r.material, r.res), r.boxWorld);
 			boolean sand = r.material.granular();
+			this.pairCoupling(r, active);
+			if (sand && r.waterPartner != null && r.waterPartner.lastMaxSpeed / r.waterPartner.res > 0.3F) {
+				r.wake(this.frameCounter);
+			}
 			if (sand && entityNear(level, r)) {
 				r.wake(this.frameCounter);
 			}
@@ -772,6 +779,9 @@ public final class WaterWorld {
 			List<float[]> removals = r.takeRemovals();
 			int numSources = this.writeGlobals(mc, level, r, slot, sand ? sandDt : stepDt, width, height, removals);
 			Desc ubo = Desc.ubo(this.uboRing, (long) slot * UBO_SLOT, UBO_SIZE);
+			if (!sand && !r.grainPartners.isEmpty()) {
+				r.recordCoupling(cb, ubo);
+			}
 			r.record(cb, ubo, regionSteps, numSources, this.frameCounter, sand ? null : this.frameView(r.material), removals.size());
 			WaterRenderer.Body body = new WaterRenderer.Body(r, ubo);
 			if (sand) {
@@ -788,6 +798,25 @@ public final class WaterWorld {
 		for (var group : fluidGroups.entrySet()) {
 			this.renderer.record(cb, group.getValue(), Desc.ssbo(this.frameView(group.getKey())), mainColor, mainDepth);
 			Gl.barrier(cb);
+		}
+	}
+
+	/** Fluid regions get the overlapping granular regions, granular regions the first overlapping (already stepped) fluid region. */
+	private void pairCoupling(WaterRegion r, List<WaterRegion> active) {
+		r.grainPartners.clear();
+		r.waterPartner = null;
+		if (!WaterSettings.coupling) {
+			return;
+		}
+		for (WaterRegion o : active) {
+			if (o == r || o.material.kind == r.material.kind || !r.windowOverlaps(o)) {
+				continue;
+			}
+			if (r.material.fluid()) {
+				r.grainPartners.add(o);
+			} else if (r.waterPartner == null && o.initialized()) {
+				r.waterPartner = o;
+			}
 		}
 	}
 
@@ -906,7 +935,10 @@ public final class WaterWorld {
 			putFloats(b, o + 3280 + k * 32, rm[0], rm[1], rm[2], 0.0F);
 			putFloats(b, o + 3296 + k * 32, rm[3], rm[4], rm[5], 0.0F);
 		}
-		putFloats(b, o + 3792, (float) (level.getMinY() - r.oy) * res - 8.0F, WaterRegion.KILL_MARGIN, 0.0F, 0.0F);
+		float grainsPerCell = WaterSettings.couplingSolidFraction * PARTICLES_PER_CELL
+			* (float) Math.pow((double) resolutionFor(Material.SAND) / res, 3.0);
+		putFloats(b, o + 3792, (float) (level.getMinY() - r.oy) * res - 8.0F, WaterRegion.KILL_MARGIN, Math.max(1.0F, grainsPerCell),
+			!sand && !r.grainPartners.isEmpty() ? 1.0F : 0.0F);
 		putFloats(b, o + 3808, WaterSettings.detailStrength, WaterSettings.detailScale, WaterSettings.detailSpeed, WaterSettings.roughness);
 		putFloats(b, o + 3824, WaterSettings.specular, WaterSettings.wetDarkening, WaterSettings.filmShading, WaterSettings.foamBubbleSize);
 
