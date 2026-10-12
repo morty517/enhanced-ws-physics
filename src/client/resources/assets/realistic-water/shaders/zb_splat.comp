@@ -1,10 +1,10 @@
-#version 450
+#version 430 core
 #include "common.glsl"
 layout(local_size_x = 256) in;
 layout(std430, binding = 1) readonly buffer Parts { Particle parts[]; };
 layout(std430, binding = 2) readonly buffer Counters { uint counters[]; };
 layout(std430, binding = 3) buffer Zb { int zb[]; };
-layout(push_constant) uniform PC { ivec4 a; vec4 b; } pc;
+layout(std140, binding = 7) uniform PC { ivec4 a; vec4 b; } pc;
 
 const float ZB_SCALE = 16384.0;
 

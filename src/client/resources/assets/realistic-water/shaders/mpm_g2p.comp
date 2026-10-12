@@ -1,6 +1,4 @@
-#version 450
-#extension GL_KHR_shader_subgroup_arithmetic : enable
-#extension GL_KHR_shader_subgroup_ballot : enable
+#version 430 core
 #include "common.glsl"
 #include "mpm.glsl"
 layout(local_size_x = 256) in;
@@ -11,7 +9,8 @@ layout(std430, binding = 4) readonly buffer Grid { vec4 grid[]; };
 layout(std430, binding = 5) readonly buffer StateSrc { float stateSrc[]; };
 layout(std430, binding = 6) writeonly buffer StateDst { float stateDst[]; };
 layout(std430, binding = 7) readonly buffer Static { uint staticSolid[]; };
-layout(push_constant) uniform PC { ivec4 a; ivec4 b; } pc;
+layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
+#include "compact.glsl"
 
 #define C_AWAKE 14
 
@@ -71,14 +70,35 @@ vec3 collideEntities(vec3 x, inout vec3 v) {
     return x;
 }
 
-void main() {
-    uint i = GID_U;
+struct Advected {
+    vec3 x;
+    vec3 v;
+    float spread;
+    float tag;
+    mat3 C;
+    mat3 F;
+    float tau6[6];
+    float rest;
+    bool asleep;
+};
+
+// Advances particle i. Returns false when it dies this step (or the slot is past the live count).
+bool advect(uint i, out Advected r) {
+    r.x = vec3(0.0);
+    r.v = vec3(0.0);
+    r.spread = 1.0;
+    r.tag = 0.0;
+    r.C = mat3(0.0);
+    r.F = mat3(1.0);
+    r.tau6 = float[](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    r.rest = 0.0;
+    r.asleep = false;
     if (i >= counters[pc.a.x]) {
-        return;
+        return false;
     }
     Particle p = src[i];
     if (p.pos.w < 0.0) {
-        return;
+        return false;
     }
     vec3 x = p.pos.xyz;
     int si = int(i) * STATE_STRIDE;
@@ -145,47 +165,48 @@ void main() {
     }
     xn = pushed;
     if (any(isnan(xn)) || any(isinf(xn)) || any(isnan(v)) || any(isnan(F[0])) || any(isnan(F[1])) || any(isnan(F[2]))) {
-        return;
+        return false;
     }
     float killMargin = G.killInfo.y;
     if (any(lessThan(xn, vec3(-killMargin))) || any(greaterThanEqual(xn, vec3(NX, NY, NZ) + killMargin)) || xn.y < G.killInfo.x) {
-        return;
+        return false;
     }
-    uint groupTotal = subgroupAdd(1u);
-    uint prefix = subgroupExclusiveAdd(1u);
-    float groupMax = subgroupMax(length(v));
-    uint groupAwake = subgroupAdd(asleep ? 0u : 1u);
-    uint base = 0u;
-    if (subgroupElect()) {
-        base = atomicAdd(counters[pc.a.y], groupTotal);
-        atomicMax(counters[6], floatBitsToUint(groupMax));
-        atomicAdd(counters[C_AWAKE], groupAwake);
+    r.x = xn;
+    r.v = v;
+    r.spread = spread;
+    r.tag = p.vel.w;
+    r.C = C;
+    r.F = F;
+    r.tau6 = tau6;
+    r.rest = rest;
+    r.asleep = asleep;
+    return true;
+}
+
+void main() {
+    // No early returns before the compaction barriers: every invocation of the workgroup has to reach them.
+    compactBegin();
+    uint i = GID_U;
+    Advected r;
+    bool alive = advect(i, r);
+    uint o = compactReserve(alive, alive ? length(r.v) : 0.0, !r.asleep, uint(pc.a.y));
+    if (gl_LocalInvocationIndex == 0u && compactAwake() > 0u) {
+        atomicAdd(counters[C_AWAKE], compactAwake());
     }
-    uint o = subgroupBroadcastFirst(base) + prefix;
-    if (o >= uint(G.caps.x)) {
-        return;
-    }
-    dst[o] = Particle(vec4(xn, spread), vec4(v, p.vel.w));
-    int so = int(o) * STATE_STRIDE;
-    for (int c = 0; c < 3; c++) {
-        for (int r = 0; r < 3; r++) {
-            stateDst[so + 3 * c + r] = C[c][r];
-            stateDst[so + 9 + 3 * c + r] = F[c][r];
+    bool wrote = alive && o < uint(G.caps.x);
+    if (wrote) {
+        dst[o] = Particle(vec4(r.x, r.spread), vec4(r.v, r.tag));
+        int so = int(o) * STATE_STRIDE;
+        for (int c = 0; c < 3; c++) {
+            for (int rr = 0; rr < 3; rr++) {
+                stateDst[so + 3 * c + rr] = r.C[c][rr];
+                stateDst[so + 9 + 3 * c + rr] = r.F[c][rr];
+            }
         }
+        for (int k = 0; k < 6; k++) {
+            stateDst[so + STATE_TAU + k] = r.tau6[k];
+        }
+        stateDst[so + STATE_REST] = r.rest;
     }
-    for (int k = 0; k < 6; k++) {
-        stateDst[so + STATE_TAU + k] = tau6[k];
-    }
-    stateDst[so + STATE_REST] = rest;
-    uvec3 cell = uvec3(ivec3(floor(xn)) + AABB_BIAS);
-    uvec3 lo = uvec3(subgroupMin(cell.x), subgroupMin(cell.y), subgroupMin(cell.z));
-    uvec3 hi = uvec3(subgroupMax(cell.x), subgroupMax(cell.y), subgroupMax(cell.z));
-    if (subgroupElect()) {
-        atomicMin(counters[8], lo.x);
-        atomicMin(counters[9], lo.y);
-        atomicMin(counters[10], lo.z);
-        atomicMax(counters[11], hi.x);
-        atomicMax(counters[12], hi.y);
-        atomicMax(counters[13], hi.z);
-    }
+    compactBounds(wrote, uvec3(ivec3(floor(r.x)) + AABB_BIAS));
 }

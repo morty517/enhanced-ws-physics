@@ -1,4 +1,4 @@
-#version 450
+#version 430 core
 #include "common.glsl"
 #include "grain_common.glsl"
 layout(std430, binding = 1) readonly buffer Visible { SurfaceParticle visible[]; };
@@ -18,8 +18,8 @@ void hide() {
 }
 
 void main() {
-    SurfaceParticle p = visible[gl_InstanceIndex];
-    uint child = uint(gl_VertexIndex) / 6u;
+    SurfaceParticle p = visible[gl_InstanceID];
+    uint child = uint(gl_VertexID) / 6u;
     vec3 nWorld = p.normal.xyz;
 
     uint seed = hash(floatBitsToUint(p.extra.x) * 747796405u + child * 2891336453u + 1u);
@@ -44,7 +44,7 @@ void main() {
         }
         r *= minPx / max(pixelR, 1e-5);
     }
-    vec2 c = CORNERS[gl_VertexIndex % 6];
+    vec2 c = CORNERS[gl_VertexID % 6];
     gl_Position = G.proj * vec4(center + vec3(c * r, 0.0), 1.0);
     vUV = c;
     vCenter = center;

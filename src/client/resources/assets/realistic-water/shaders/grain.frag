@@ -1,4 +1,4 @@
-#version 450
+#version 430 core
 #include "common.glsl"
 layout(location = 0) in vec2 vUV;
 layout(location = 1) in vec3 vCenter;
@@ -19,7 +19,7 @@ void main() {
     }
     vec3 pos = vCenter + vec3(vUV, sqrt(1.0 - r2)) * vRadius;
     vec4 clip = G.proj * vec4(pos, 1.0);
-    gl_FragDepth = clip.z / clip.w;
+    gl_FragDepth = clip.z / clip.w * 0.5 + 0.5; // GL: NDC z [-1,1] -> depth [0,1]
     uint s = vSeed;
     vec3 nWorld = normalize(mat3(G.invView) * vNormal);
     vec3 albedo = sandAlbedo(vWorld, nWorld, 0.0) * (0.92 + 0.2 * rand(s));

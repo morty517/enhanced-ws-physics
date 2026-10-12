@@ -1,10 +1,10 @@
-#version 450
+#version 430 core
 #include "common.glsl"
 layout(local_size_x = 256) in;
 layout(std430, binding = 1) buffer Dens { float dens[]; };
 layout(std430, binding = 2) buffer Wide { float wide[]; };
 layout(std430, binding = 3) buffer Result { float result[]; };
-layout(push_constant) uniform PC { ivec4 a; vec4 b; } pc;
+layout(std140, binding = 7) uniform PC { ivec4 a; vec4 b; } pc;
 
 const int TAPS = 6;
 

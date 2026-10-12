@@ -1,11 +1,11 @@
-#version 450
+#version 430 core
 #include "common.glsl"
 layout(std430, binding = 1) readonly buffer Parts { Particle parts[]; };
 #ifdef DROPLETS
 layout(std430, binding = 2) readonly buffer Dens { float dens[]; };
 #endif
 layout(std430, binding = VIEW_BINDING) readonly buffer ViewState { vec4 viewState; };
-layout(push_constant) uniform PC { vec4 a; vec4 b; } pc;
+layout(std140, binding = 7) uniform PC { vec4 a; vec4 b; } pc;
 
 layout(location = 0) out vec2 vUV;
 layout(location = 1) out vec3 vCenter;
@@ -15,7 +15,7 @@ layout(location = 3) out vec4 vData;
 const vec2 CORNERS[6] = vec2[](vec2(-1, -1), vec2(1, -1), vec2(1, 1), vec2(-1, -1), vec2(1, 1), vec2(-1, 1));
 
 void main() {
-    uint id = uint(gl_InstanceIndex);
+    uint id = uint(gl_InstanceID);
     Particle p = parts[id];
 #ifdef DROPLETS
     if (p.pos.w < 0.0) {
@@ -63,7 +63,7 @@ void main() {
     if (pc.a.w > 0.0) {
         alpha *= smoothstep(pc.a.z, pc.a.z + 1.2, dist);
     }
-    vec2 c = CORNERS[gl_VertexIndex];
+    vec2 c = CORNERS[gl_VertexID];
     gl_Position = G.proj * vec4(center + vec3(c * r, 0.0), 1.0);
     vUV = c;
     vCenter = center;

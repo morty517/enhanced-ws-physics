@@ -1,4 +1,4 @@
-layout(push_constant) uniform PC { ivec4 dims; ivec4 cdims; ivec4 misc; ivec4 misc2; } pc;
+layout(std140, binding = 7) uniform PC { ivec4 dims; ivec4 cdims; ivec4 misc; ivec4 misc2; } pc;
 
 int lvlIndex(ivec3 c, ivec4 d) {
     return d.w + c.x + d.x * (c.y + d.y * c.z);

@@ -575,7 +575,25 @@ public final class WaterWorld {
 	}
 
 
+	private boolean renderedThisFrame;
+
+	/** Called at the start of every world frame (GameRenderer.renderLevel). */
+	public void beginWorldFrame() {
+		this.renderedThisFrame = false;
+	}
+
+	/** Fallback after the level is drawn, for when the translucent-terrain hook did not run this frame. */
+	public void renderFrameIfMissed() {
+		if (!this.renderedThisFrame) {
+			this.renderFrame();
+		}
+	}
+
 	public void renderFrame() {
+		if (this.renderedThisFrame) {
+			return;
+		}
+		this.renderedThisFrame = true;
 		Minecraft mc = Minecraft.getInstance();
 		if (this.regions.isEmpty() || this.failed || mc.level == null || !Gl.ready()) {
 			this.lastFrameNanos = 0L;

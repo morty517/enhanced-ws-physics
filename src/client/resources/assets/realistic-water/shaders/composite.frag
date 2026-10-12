@@ -1,4 +1,4 @@
-#version 450
+#version 430 core
 #include "common.glsl"
 layout(binding = 1) uniform sampler2D gbuffer;
 layout(binding = 2) uniform sampler2D thicknessTex;
@@ -11,7 +11,7 @@ layout(location = 0) out vec4 outColor;
 const float PI = 3.14159265;
 
 float linearDepth(float device) {
-    vec4 v = G.invProj * vec4(0.0, 0.0, device, 1.0);
+    vec4 v = G.invProj * vec4(0.0, 0.0, device * 2.0 - 1.0, 1.0); // GL: depth [0,1] -> NDC z [-1,1]
     return -v.z / v.w;
 }
 
@@ -215,14 +215,14 @@ void main() {
             color = shadeSurfaceFromBelow(uv, g.xyz, fd, deep);
             visible = fd;
             vec4 clip = G.proj * vec4(viewPosAt(uv, fd), 1.0);
-            outDepth = clip.z / clip.w;
+            outDepth = clip.z / clip.w * 0.5 + 0.5;
         }
         float fog = G.scatter.w * G.misc.x;
         color = color * exp(-G.absorb.rgb * visible * G.misc.x) + deep * (1.0 - exp(-fog * visible));
     } else if (hasFluid) {
         color = shadeAboveWater(uv, g.xyz, fd, sceneDist, ambient);
         vec4 clip = G.proj * vec4(viewPosAt(uv, fd), 1.0);
-        outDepth = clip.z / clip.w;
+        outDepth = clip.z / clip.w * 0.5 + 0.5;
     }
 
     if (foam.a > 1e-4) {

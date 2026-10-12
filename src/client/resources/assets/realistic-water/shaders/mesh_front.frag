@@ -1,4 +1,4 @@
-#version 450
+#version 430 core
 #include "common.glsl"
 layout(std430, binding = 3) readonly buffer ViewState { vec4 viewState; };
 layout(location = 0) in vec3 vView;

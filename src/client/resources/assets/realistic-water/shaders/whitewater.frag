@@ -1,4 +1,4 @@
-#version 450
+#version 430 core
 #include "common.glsl"
 layout(binding = 2) uniform sampler2D sceneDepth;
 layout(binding = 3) uniform sampler2D gbuffer;
@@ -10,7 +10,7 @@ layout(location = 3) in vec4 vData;
 layout(location = 0) out vec4 outFoam;
 
 float linearDepth(float device) {
-    vec4 v = G.invProj * vec4(0.0, 0.0, device, 1.0);
+    vec4 v = G.invProj * vec4(0.0, 0.0, device * 2.0 - 1.0, 1.0); // GL: depth [0,1] -> NDC z [-1,1]
     return -v.z / v.w;
 }
 

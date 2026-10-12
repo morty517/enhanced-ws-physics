@@ -1,6 +1,4 @@
-#version 450
-#extension GL_KHR_shader_subgroup_arithmetic : enable
-#extension GL_KHR_shader_subgroup_ballot : enable
+#version 430 core
 #define WITH_VEL_OLD
 #include "common.glsl"
 layout(local_size_x = 256) in;
@@ -15,7 +13,8 @@ layout(std430, binding = 8) readonly buffer Pot { vec2 potential[]; };
 layout(std430, binding = 9) writeonly buffer WwDst { Particle wwDst[]; };
 layout(std430, binding = 10) readonly buffer WwCount { int wwCount[]; };
 layout(std430, binding = 11) readonly buffer Count { int cellCount[]; };
-layout(push_constant) uniform PC { ivec4 a; ivec4 b; } pc;
+layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
+#include "compact.glsl"
 
 #include "gridsample.glsl"
 
@@ -145,14 +144,18 @@ void emitWhitewater(uint id, vec3 x, vec3 v) {
     }
 }
 
-void main() {
-    uint i = GID_U;
+// Advances particle i. Returns false when it dies this step (or the slot is past the live count).
+bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out bool griddedOut) {
+    xnOut = vec3(0.0);
+    vOut = vec3(0.0);
+    tagOut = 0.0;
+    griddedOut = false;
     if (i >= counters[pc.a.x]) {
-        return;
+        return false;
     }
     Particle p = src[i];
     if (p.pos.w < 0.0) {
-        return;
+        return false;
     }
     vec3 x = p.pos.xyz;
     vec3 v = p.vel.xyz;
@@ -166,7 +169,7 @@ void main() {
         v = mix(uNew, v + (uNew - uOld), G.simA.x);
         dx = DT * sampleVel(x + 0.5 * DT * uNew);
         if (!waterFilm(x, v, dx, tag)) {
-            return;
+            return false;
         }
     } else {
         v += G.gravityDt.xyz * DT;
@@ -184,38 +187,36 @@ void main() {
     vec3 xn = collideStatic(x, x + dx, v);
     xn = collideEntities(xn, v);
     if (any(isnan(xn)) || any(isinf(xn)) || any(isnan(v))) {
-        return;
+        return false;
     }
 
     float killMargin = G.killInfo.y;
     if (any(lessThan(xn, vec3(-killMargin))) || any(greaterThanEqual(xn, vec3(NX, NY, NZ) + killMargin)) || xn.y < G.killInfo.x) {
-        return;
+        return false;
     }
-    uint groupTotal = subgroupAdd(1u);
-    uint prefix = subgroupExclusiveAdd(1u);
-    float groupMax = subgroupMax(length(v));
-    uint base = 0u;
-    if (subgroupElect()) {
-        base = atomicAdd(counters[pc.a.y], groupTotal);
-        atomicMax(counters[6], floatBitsToUint(groupMax));
+    xnOut = xn;
+    vOut = v;
+    tagOut = tag;
+    griddedOut = gridded;
+    return true;
+}
+
+void main() {
+    // No early returns before the compaction barriers: every invocation of the workgroup has to reach them.
+    compactBegin();
+    uint i = GID_U;
+    vec3 xn;
+    vec3 v;
+    float tag;
+    bool gridded;
+    bool alive = advect(i, xn, v, tag, gridded);
+    uint o = compactReserve(alive, alive ? length(v) : 0.0, true, uint(pc.a.y));
+    bool wrote = alive && o < uint(G.caps.x);
+    if (wrote) {
+        dst[o] = Particle(vec4(xn, tag), vec4(v, 0.0));
     }
-    uint o = subgroupBroadcastFirst(base) + prefix;
-    if (o >= uint(G.caps.x)) {
-        return;
-    }
-    dst[o] = Particle(vec4(xn, tag), vec4(v, 0.0));
-    uvec3 cell = uvec3(ivec3(floor(xn)) + AABB_BIAS);
-    uvec3 lo = uvec3(subgroupMin(cell.x), subgroupMin(cell.y), subgroupMin(cell.z));
-    uvec3 hi = uvec3(subgroupMax(cell.x), subgroupMax(cell.y), subgroupMax(cell.z));
-    if (subgroupElect()) {
-        atomicMin(counters[8], lo.x);
-        atomicMin(counters[9], lo.y);
-        atomicMin(counters[10], lo.z);
-        atomicMax(counters[11], hi.x);
-        atomicMax(counters[12], hi.y);
-        atomicMax(counters[13], hi.z);
-    }
-    if (pc.b.y != 0 && gridded) {
+    compactBounds(wrote, uvec3(ivec3(floor(xn)) + AABB_BIAS));
+    if (wrote && pc.b.y != 0 && gridded) {
         emitWhitewater(i, xn, v);
     }
 }

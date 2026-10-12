@@ -1,4 +1,4 @@
-#version 450
+#version 430 core
 #include "common.glsl"
 layout(std430, binding = 1) readonly buffer Verts { vec4 verts[]; };
 layout(std430, binding = 2) readonly buffer Quads { uvec4 quads[]; };
@@ -9,8 +9,8 @@ layout(location = 2) out float vWall;
 const int CORNER[6] = int[](0, 1, 2, 0, 2, 3);
 
 void main() {
-    uvec4 q = quads[gl_VertexIndex / 6];
-    vec4 v = verts[q[CORNER[gl_VertexIndex % 6]]];
+    uvec4 q = quads[gl_VertexID / 6];
+    vec4 v = verts[q[CORNER[gl_VertexID % 6]]];
     bool wall;
     vec3 n = unpackNormal(floatBitsToUint(v.w), wall);
     vec4 view = G.view * vec4(G.domainOrigin.xyz + v.xyz * G.domainOrigin.w, 1.0);

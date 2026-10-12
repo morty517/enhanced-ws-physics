@@ -11,7 +11,7 @@ struct Particle {
 #define MAX_REMOVE 16
 #define AABB_BIAS 1048576
 
-layout(std140, set = 0, binding = 0) uniform Globals {
+layout(std140, binding = 0) uniform Globals {
     ivec4 dims;
     ivec4 faces;
     ivec4 caps;
