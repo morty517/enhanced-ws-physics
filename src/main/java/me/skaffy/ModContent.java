@@ -36,6 +36,7 @@ public final class ModContent {
 	static {
 		registerFluid(Material.WATER, MapColor.WATER);
 		registerFluid(Material.MILK, MapColor.SNOW);
+		registerFluid(Material.SUSPICIOUS_MILK, MapColor.QUARTZ);
 		registerGranular(Material.SAND, MapColor.SAND, SoundType.SAND, NoteBlockInstrument.SNARE);
 		registerGranular(Material.RED_SAND, MapColor.COLOR_ORANGE, SoundType.SAND, NoteBlockInstrument.SNARE);
 		registerGranular(Material.GRAVEL, MapColor.STONE, SoundType.GRAVEL, NoteBlockInstrument.SNARE);
@@ -123,6 +124,7 @@ public final class ModContent {
 		ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.TOOLS_AND_UTILITIES).register(entries -> {
 			entries.addAfter(Items.WATER_BUCKET, item(Material.WATER));
 			entries.addAfter(Items.MILK_BUCKET, item(Material.MILK));
+			entries.addAfter(item(Material.MILK), item(Material.SUSPICIOUS_MILK));
 		});
 		ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.NATURAL_BLOCKS).register(entries -> {
 			entries.addAfter(Items.SAND, item(Material.SAND));

@@ -5,5 +5,7 @@
   "block.realistic-water.realistic_milk": "Realistic Milk",
   "item.realistic-water.realistic_milk_bucket": "Realistic Milk Bucket",
   "block.realistic-water.realistic_red_sand": "Realistic Red Sand",
-  "block.realistic-water.realistic_gravel": "Realistic Gravel"
+  "block.realistic-water.realistic_gravel": "Realistic Gravel",
+  "block.realistic-water.realistic_suspicious_milk": "Suspicious Milk",
+  "item.realistic-water.realistic_suspicious_milk_bucket": "Bucket of Suspicious Milk"
 }

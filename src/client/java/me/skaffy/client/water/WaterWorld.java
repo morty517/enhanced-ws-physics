@@ -875,7 +875,7 @@ public final class WaterWorld {
 		int sourceCount = sand ? 0 : this.writeSources(r, b, o + 2112);
 		putInts(b, o + 48, !sand && WaterSettings.whitewater ? 1 : 0, sourceCount, !sand && this.localPlayerFirst ? 1 : 0, WaterSettings.wwCellLimit);
 		putFloats(b, o + 64, 0.0F, -WaterSettings.gravity * res, 0.0F, dt);
-		float flip = (float) Math.pow(WaterSettings.flipRatio, dt * 60.0F);
+		float flip = (float) Math.pow(m == Material.SUSPICIOUS_MILK ? WaterSettings.suspiciousFlipRatio : WaterSettings.flipRatio, dt * 60.0F);
 		putFloats(b, o + 80, flip, PARTICLES_PER_CELL, WaterSettings.volumeCorrection, 0.0F);
 		putFloats(b, o + 96, WaterSettings.maxSpeed * res, h, this.simTime, 0.0F);
 		putFloats(b, o + 112, WaterSettings.wwTrappedAirRate, WaterSettings.wwWaveCrestRate, WaterSettings.wwEnergyMin, WaterSettings.wwEnergyMax);
@@ -911,6 +911,10 @@ public final class WaterWorld {
 		if (m == Material.MILK) {
 			putFloats(b, o + 528, WaterSettings.milkAbsorbR, WaterSettings.milkAbsorbG, WaterSettings.milkAbsorbB, 0.0F);
 			putFloats(b, o + 544, WaterSettings.milkScatterR, WaterSettings.milkScatterG, WaterSettings.milkScatterB, WaterSettings.milkScatterDensity);
+		} else if (m == Material.SUSPICIOUS_MILK) {
+			putFloats(b, o + 528, WaterSettings.suspiciousAbsorbR, WaterSettings.suspiciousAbsorbG, WaterSettings.suspiciousAbsorbB, 0.0F);
+			putFloats(b, o + 544, WaterSettings.suspiciousScatterR, WaterSettings.suspiciousScatterG, WaterSettings.suspiciousScatterB,
+				WaterSettings.suspiciousScatterDensity);
 		} else {
 			putFloats(b, o + 528, WaterSettings.absorbR, WaterSettings.absorbG, WaterSettings.absorbB, 0.0F);
 			putFloats(b, o + 544, WaterSettings.scatterR, WaterSettings.scatterG, WaterSettings.scatterB, WaterSettings.scatterDensity);
@@ -955,7 +959,9 @@ public final class WaterWorld {
 			putFloats(b, o + 3872, WaterSettings.sandWallFriction, 1.0F / PARTICLES_PER_CELL, impactViscosity, WaterSettings.sandImpactRate);
 		} else {
 			putFloats(b, o + 3840, r.material.shaderId(), 0.0F, 0.0F, 1.0F);
-			putFloats(b, o + 3856, WaterSettings.filmFriction, WaterSettings.strandedTime, WaterSettings.strandedNeighbors, WaterSettings.filmDepth * res);
+			boolean sus = m == Material.SUSPICIOUS_MILK;
+			putFloats(b, o + 3856, sus ? WaterSettings.suspiciousFilmFriction : WaterSettings.filmFriction,
+				sus ? WaterSettings.suspiciousStrandedTime : WaterSettings.strandedTime, WaterSettings.strandedNeighbors, WaterSettings.filmDepth * res);
 			putFloats(b, o + 3872, 0.0F, 0.0F, 0.0F, 0.0F);
 		}
 		putFloats(b, o + 3888, WaterSettings.sandGrainMinPixels, m == Material.GRAVEL ? WaterSettings.gravelBrightness : WaterSettings.sandBrightness,

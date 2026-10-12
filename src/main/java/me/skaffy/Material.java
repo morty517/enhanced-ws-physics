@@ -18,7 +18,9 @@ public enum Material {
 	SAND(Kind.GRANULAR, "sand"),
 	MILK(Kind.FLUID, "milk"),
 	RED_SAND(Kind.GRANULAR, "red_sand"),
-	GRAVEL(Kind.GRANULAR, "gravel");
+	GRAVEL(Kind.GRANULAR, "gravel"),
+	/** Very suspicious. Same solver as water, but lazier (low FLIP ratio, sticky film) and milky-translucent. */
+	SUSPICIOUS_MILK(Kind.FLUID, "suspicious_milk");
 
 	public enum Kind { FLUID, GRANULAR }
 

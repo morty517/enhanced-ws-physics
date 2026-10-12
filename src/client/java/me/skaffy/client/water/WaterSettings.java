@@ -118,6 +118,18 @@ public final class WaterSettings {
 	public static float milkScatterB = 0.90F;
 	public static float milkScatterDensity = 30.0F;
 
+	// Suspicious milk: translucent, greyish white, and lazy (low FLIP ratio, sticky film that takes long to dry).
+	public static float suspiciousAbsorbR = 5.0F;
+	public static float suspiciousAbsorbG = 5.0F;
+	public static float suspiciousAbsorbB = 4.6F;
+	public static float suspiciousScatterR = 0.86F;
+	public static float suspiciousScatterG = 0.86F;
+	public static float suspiciousScatterB = 0.84F;
+	public static float suspiciousScatterDensity = 4.0F;
+	public static float suspiciousFlipRatio = 0.8F;
+	public static float suspiciousFilmFriction = 160.0F;
+	public static float suspiciousStrandedTime = 8.0F;
+
 	// Red sand: the sand solver with the red sand texture and a touch more cohesion.
 	public static float redSandFrictionAngle = 15.0F;
 	public static float redSandCohesion = 0.02F;

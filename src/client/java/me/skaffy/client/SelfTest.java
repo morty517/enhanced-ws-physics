@@ -112,7 +112,7 @@ public final class SelfTest {
 						dropAt(mc, Material.WATER, size, pitCenter(mc).add(0.0, 2.5, 0.0));
 					} else {
 						drop(mc, Material.WATER, size, -2.5);
-						drop(mc, Material.MILK, size, 2.5);
+						drop(mc, Boolean.getBoolean("realisticwater.selftest.sus") ? Material.SUSPICIOUS_MILK : Material.MILK, size, 2.5);
 					}
 					RealisticWater.LOGGER.warn("[selftest] dropped water ball");
 					stage = Stage.WATER;
