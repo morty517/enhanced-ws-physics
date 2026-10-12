@@ -1,5 +1,6 @@
 package me.skaffy.client.water;
 
+import me.skaffy.Material;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
 
@@ -43,17 +44,30 @@ public final class WaterCommands {
 			.then(literal("sand")
 				.executes(c -> ball(c, 2, Material.SAND))
 				.then(argument("size", IntegerArgumentType.integer(1, 64)).executes(c -> ball(c, IntegerArgumentType.getInteger(c, "size"), Material.SAND))))
+			.then(literal("spawn")
+				.then(argument("material", StringArgumentType.word())
+					.suggests((c, b) -> SharedSuggestionProvider.suggest(materialIds(false), b))
+					.executes(c -> spawn(c, -1))
+					.then(argument("size", IntegerArgumentType.integer(1, 64)).executes(c -> spawn(c, IntegerArgumentType.getInteger(c, "size"))))))
 			.then(literal("remove")
-				.executes(c -> {
-					WaterWorld.get().removeAll(Minecraft.getInstance().options.renderDistance().get() + 2, Material.WATER);
-					c.getSource().sendFeedback(Component.literal("Removing all realistic water around you (springs included)"));
-					return 1;
-				})
-				.then(literal("sand").executes(c -> {
-					WaterWorld.get().removeAll(Minecraft.getInstance().options.renderDistance().get() + 2, Material.SAND);
-					c.getSource().sendFeedback(Component.literal("Removing all realistic sand around you"));
-					return 1;
-				})))
+				.executes(c -> remove(c, Material.WATER))
+				.then(argument("material", StringArgumentType.word())
+					.suggests((c, b) -> SharedSuggestionProvider.suggest(materialIds(true), b))
+					.executes(c -> {
+						String id = StringArgumentType.getString(c, "material");
+						if (id.equals("all")) {
+							for (Material m : Material.VALUES) {
+								remove(c, m);
+							}
+							return 1;
+						}
+						Material m = Material.byId(id);
+						if (m == null) {
+							c.getSource().sendError(Component.literal("Unknown material " + id + " (" + String.join(", ", materialIds(true)) + ")"));
+							return 0;
+						}
+						return remove(c, m);
+					})))
 			.then(literal("set")
 				.then(argument("name", StringArgumentType.word())
 					.suggests((c, b) -> SharedSuggestionProvider.suggest(WaterSettings.fields().keySet(), b))
@@ -73,13 +87,40 @@ public final class WaterCommands {
 					.then(argument("fps", IntegerArgumentType.integer(1, 240)).executes(c -> render(c, IntegerArgumentType.getInteger(c, "fps")))))));
 	}
 
+	private static java.util.List<String> materialIds(boolean withAll) {
+		java.util.List<String> ids = new java.util.ArrayList<>();
+		for (Material m : Material.VALUES) {
+			ids.add(m.id);
+		}
+		if (withAll) {
+			ids.add("all");
+		}
+		return ids;
+	}
+
+	private static int spawn(CommandContext<FabricClientCommandSource> c, int size) {
+		String id = StringArgumentType.getString(c, "material");
+		Material m = Material.byId(id);
+		if (m == null) {
+			c.getSource().sendError(Component.literal("Unknown material " + id + " (" + String.join(", ", materialIds(false)) + ")"));
+			return 0;
+		}
+		return ball(c, size > 0 ? size : (m.granular() ? 2 : 3), m);
+	}
+
+	private static int remove(CommandContext<FabricClientCommandSource> c, Material m) {
+		WaterWorld.get().removeAll(Minecraft.getInstance().options.renderDistance().get() + 2, m);
+		c.getSource().sendFeedback(Component.literal("Removing all realistic " + m.id.replace('_', ' ') + " around you" + (m.fluid() ? " (springs included)" : "")));
+		return 1;
+	}
+
 	private static int ball(CommandContext<FabricClientCommandSource> c, int size, Material material) {
 		var player = c.getSource().getPlayer();
 		Vec3 center = player.getEyePosition().add(player.getLookAngle().scale(size + 3.0));
 		double half = size * 0.5;
 		WaterWorld.get().addEmitter(new WaterRegion.Emitter(
 			center.x - half, center.y - half, center.z - half, center.x + half, center.y + half, center.z + half, 0, 0, 0), material);
-		c.getSource().sendFeedback(Component.literal("Dropped a " + size + "^3 block cube of " + (material == Material.SAND ? "sand" : "water")));
+		c.getSource().sendFeedback(Component.literal("Dropped a " + size + "^3 block cube of " + material.id.replace('_', ' ')));
 		return 1;
 	}
 

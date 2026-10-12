@@ -1,5 +1,6 @@
 package me.skaffy.client.water;
 
+import me.skaffy.Material;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -22,7 +23,8 @@ final class FlowSounds {
 	private int tick;
 
 	void onFill(Material material, WaterRegion.Fill f, Vec3 listener) {
-		boolean water = material == Material.WATER;
+		boolean water = material.fluid();
+		SoundType grains = material == Material.GRAVEL ? SoundType.GRAVEL : SoundType.SAND;
 		if (water ? !WaterSettings.flowSounds : !WaterSettings.sandSounds) {
 			return;
 		}
@@ -68,7 +70,7 @@ final class FlowSounds {
 			if (water) {
 				this.schedule(b, SoundEvents.WATER_AMBIENT, (0.45F + 0.45F * loud) * volumeScale, this.random.nextFloat() + 0.5F);
 			} else {
-				SoundEvent sound = this.random.nextBoolean() ? SoundType.SAND.getStepSound() : SoundType.SAND.getHitSound();
+				SoundEvent sound = this.random.nextBoolean() ? grains.getStepSound() : grains.getHitSound();
 				this.schedule(b, sound, (0.12F + 0.25F * loud) * volumeScale, 0.7F + this.random.nextFloat() * 0.5F);
 			}
 		}
@@ -78,7 +80,7 @@ final class FlowSounds {
 			if (water) {
 				this.schedule(b, SoundEvents.GENERIC_SPLASH, 0.25F * volumeScale, 0.8F + this.random.nextFloat() * 0.4F);
 			} else {
-				this.schedule(b, SoundType.SAND.getFallSound(), 0.35F * volumeScale, 0.8F + this.random.nextFloat() * 0.3F);
+				this.schedule(b, grains.getFallSound(), 0.35F * volumeScale, 0.8F + this.random.nextFloat() * 0.3F);
 			}
 		}
 	}

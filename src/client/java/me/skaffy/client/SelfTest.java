@@ -1,7 +1,8 @@
 package me.skaffy.client;
 
+import me.skaffy.Material;
 import me.skaffy.RealisticWater;
-import me.skaffy.client.water.Material;
+
 import me.skaffy.client.water.WaterRegion;
 import me.skaffy.client.water.WaterSettings;
 import me.skaffy.client.water.WaterWorld;
@@ -88,7 +89,9 @@ public final class SelfTest {
 					set("sandResolution", System.getProperty("realisticwater.selftest.sandResolution", "6"));
 				}
 				if (ticks >= SETTLE_TICKS) {
-					drop(mc, Material.WATER, Double.parseDouble(System.getProperty("realisticwater.selftest.waterSize", "2")), 0.0);
+					double size = Double.parseDouble(System.getProperty("realisticwater.selftest.waterSize", "2"));
+					drop(mc, Material.WATER, size, -2.5);
+					drop(mc, Material.MILK, size, 2.5);
 					RealisticWater.LOGGER.warn("[selftest] dropped water ball");
 					stage = Stage.WATER;
 					frameMark = frames();
@@ -118,7 +121,9 @@ public final class SelfTest {
 					if (Boolean.getBoolean("realisticwater.selftest.clip")) {
 						RealisticWater.LOGGER.warn("[selftest] clip: {}", me.skaffy.client.water.ClipRecorder.get().start(0.5, 10));
 					}
-					drop(mc, Material.SAND, 1.5, 3.0);
+					drop(mc, Material.SAND, 1.5, 3.5);
+					drop(mc, Material.RED_SAND, 1.5, 0.0);
+					drop(mc, Material.GRAVEL, 1.5, -3.5);
 					RealisticWater.LOGGER.warn("[selftest] dropped sand cube");
 					stage = Stage.SAND;
 					frameMark = frames();

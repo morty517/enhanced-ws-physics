@@ -1,5 +1,6 @@
 package me.skaffy.client;
 
+import me.skaffy.Material;
 import me.skaffy.ModContent;
 import me.skaffy.client.water.WaterCommands;
 import me.skaffy.client.water.WaterWorld;
@@ -40,6 +41,10 @@ public class RealisticWaterClient implements ClientModInitializer {
 			public void renderFluid(BlockPos pos, BlockAndTintGetter level, VertexConsumer vertexConsumer, BlockState blockState, FluidState fluidState) {
 			}
 		};
-		FluidRenderHandlerRegistry.INSTANCE.register(ModContent.REALISTIC_WATER, ModContent.FLOWING_REALISTIC_WATER, invisible);
+		for (Material m : Material.VALUES) {
+			if (m.fluid()) {
+				FluidRenderHandlerRegistry.INSTANCE.register(ModContent.sourceFluid(m), ModContent.flowingFluid(m), invisible);
+			}
+		}
 	}
 }

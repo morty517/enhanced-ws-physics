@@ -1,6 +1,6 @@
 package me.skaffy.net;
 
-import me.skaffy.ModContent;
+import me.skaffy.Material;
 import me.skaffy.RealisticWater;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -13,14 +13,23 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 
-public record RemoveAllWaterPayload(int radiusChunks, boolean sand) implements CustomPacketPayload {
+public record RemoveAllWaterPayload(int radiusChunks, byte material) implements CustomPacketPayload {
 	public static final Type<RemoveAllWaterPayload> TYPE = new Type<>(RealisticWater.id("remove_all_water"));
 	public static final StreamCodec<RegistryFriendlyByteBuf, RemoveAllWaterPayload> CODEC = StreamCodec.of(
 		(buf, p) -> {
 			buf.writeVarInt(p.radiusChunks);
-			buf.writeBoolean(p.sand);
+			buf.writeByte(p.material);
 		},
-		buf -> new RemoveAllWaterPayload(buf.readVarInt(), buf.readBoolean()));
+		buf -> new RemoveAllWaterPayload(buf.readVarInt(), buf.readByte()));
+
+	public RemoveAllWaterPayload(int radiusChunks, Material material) {
+		this(radiusChunks, material.networkId());
+	}
+
+	public Material materialOrWater() {
+		Material m = Material.byNetworkId(this.material);
+		return m != null ? m : Material.WATER;
+	}
 
 	@Override
 	public Type<RemoveAllWaterPayload> type() {
@@ -29,7 +38,7 @@ public record RemoveAllWaterPayload(int radiusChunks, boolean sand) implements C
 
 	public int apply(ServerPlayer player) {
 		ServerLevel level = player.level();
-		Block target = this.sand ? ModContent.REALISTIC_SAND : ModContent.REALISTIC_WATER_BLOCK;
+		Block target = this.materialOrWater().block();
 		int radius = Math.clamp(this.radiusChunks, 1, 64);
 		int cx = player.blockPosition().getX() >> 4;
 		int cz = player.blockPosition().getZ() >> 4;

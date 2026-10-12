@@ -1,5 +1,6 @@
 package me.skaffy.client.water;
 
+import me.skaffy.Material;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -212,11 +213,11 @@ public final class WaterRegion implements AutoCloseable {
 		for (int i = 0; i < 2; i++) {
 			this.particles[i] = GlBuf.device((long) this.fluidCapacity * PARTICLE_BYTES, 0);
 			this.whitewater[i] = GlBuf.device((long) this.wwCapacity * PARTICLE_BYTES, 0);
-			if (material == Material.SAND) {
+			if (material.granular()) {
 				this.mpmState[i] = GlBuf.device((long) this.fluidCapacity * MPM_STATE_BYTES, 0);
 			}
 		}
-		if (material == Material.SAND) {
+		if (material.granular()) {
 			this.surfaceParticles = GlBuf.device((long) this.fluidCapacity * SURFACE_PARTICLE_BYTES, 0);
 		}
 		this.counters = GlBuf.device(64, 0);
@@ -445,7 +446,7 @@ public final class WaterRegion implements AutoCloseable {
 		this.cellCount = GlBuf.device(this.numCells * 4L, 0);
 		this.cellFlags = GlBuf.device(this.numCells * 4L, 0);
 		this.staticSolid = GlBuf.device(this.numCells * 4L, 0);
-		if (this.material == Material.SAND) {
+		if (this.material.granular()) {
 			this.mpmGrid = GlBuf.device(this.numCells * 16L, 0);
 		} else {
 			this.accum = GlBuf.device(this.numFaces * 8L, 0);
@@ -563,7 +564,7 @@ public final class WaterRegion implements AutoCloseable {
 		if (estimate > this.fluidCapacity * 0.8) {
 			int next = (int) Math.min(Integer.MAX_VALUE / PARTICLE_BYTES, Math.max(this.fluidCapacity * 2L, estimate * 3 / 2));
 			this.particles = grow(cb, this.particles, this.cur, (long) this.fluidCapacity * PARTICLE_BYTES, (long) next * PARTICLE_BYTES);
-			if (this.material == Material.SAND) {
+			if (this.material.granular()) {
 				GlBuf[] grown = grow(cb, this.mpmState, this.cur, (long) this.fluidCapacity * MPM_STATE_BYTES, (long) next * MPM_STATE_BYTES);
 				this.mpmState[0] = grown[0];
 				this.mpmState[1] = grown[1];
@@ -647,7 +648,7 @@ public final class WaterRegion implements AutoCloseable {
 	}
 
 	boolean dormant() {
-		return this.material == Material.SAND && this.initialized && this.lastAwake == 0 && this.lastAwakeFrame > this.wakeFrame
+		return this.material.granular() && this.initialized && this.lastAwake == 0 && this.lastAwakeFrame > this.wakeFrame
 			&& this.pending.isEmpty() && this.removals.isEmpty() && this.absorbQueue.isEmpty() && this.pendingShift == null
 			&& !this.solidsFullUpload && this.solidPatches.isEmpty() && !this.freshGrid;
 	}
@@ -694,7 +695,7 @@ public final class WaterRegion implements AutoCloseable {
 			this.pendingShiftHappened = true;
 			this.cellCount.fill(cb, 0);
 			this.cellFlags.fill(cb, 0);
-			if (this.material == Material.SAND) {
+			if (this.material.granular()) {
 				this.mpmGrid.fill(cb, 0);
 			} else {
 				this.pressure.fill(cb, 0);
@@ -770,7 +771,7 @@ public final class WaterRegion implements AutoCloseable {
 		}
 
 		for (int s = 0; s < steps; s++) {
-			if (this.material == Material.SAND) {
+			if (this.material.granular()) {
 				this.mpmStep(cb, ubo, box);
 			} else {
 				this.step(cb, ubo, numSources, box, s == 0);
@@ -781,7 +782,7 @@ public final class WaterRegion implements AutoCloseable {
 		p[0].bind(cb, ubo, Desc.ssbo(this.counters), Desc.ssbo(this.args));
 		p[0].push(cb, C_FLUID + this.cur, C_WW + this.wwCur);
 		p[0].dispatch(cb, 1, 1, 1);
-		if (this.material == Material.WATER) {
+		if (this.material.fluid()) {
 			p[13].bind(cb, ubo, Desc.ssbo(this.cellDens), Desc.ssbo(this.cellFlags), Desc.ssbo(frameView));
 			p[13].dispatch(cb, 1, 1, 1);
 		}
@@ -824,7 +825,7 @@ public final class WaterRegion implements AutoCloseable {
 			this.fillReadback[slot] = GlBuf.readback(n * 4 * 2);
 		}
 		Gl.barrier(cb);
-		boolean sand = this.material == Material.SAND;
+		boolean sand = this.material.granular();
 		if (sand) {
 			ComputeProgram classify = programs()[4];
 			classify.bind(cb, ubo, Desc.ssbo(this.staticSolid), Desc.ssbo(this.cellCount), Desc.ssbo(this.cellFlags));

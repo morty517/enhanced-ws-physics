@@ -1,5 +1,7 @@
 package me.skaffy;
 
+import java.util.EnumMap;
+import java.util.Map;
 import me.skaffy.block.RealisticSandBlock;
 import me.skaffy.block.RealisticWaterBlock;
 import me.skaffy.fluid.RealisticWaterFluid;
@@ -21,61 +23,111 @@ import net.minecraft.world.level.material.FlowingFluid;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.level.material.PushReaction;
 
+/**
+ * Blocks, fluids and items for every {@link Material}. Registry ids keep the original names for water and sand
+ * ({@code realistic_water}, {@code realistic_sand}, {@code realistic_water_bucket}) so existing worlds still load.
+ */
 public final class ModContent {
-	public static final FlowingFluid FLOWING_REALISTIC_WATER = Registry.register(
-		BuiltInRegistries.FLUID, RealisticWater.id("flowing_realistic_water"), new RealisticWaterFluid.Flowing());
-	public static final FlowingFluid REALISTIC_WATER = Registry.register(
-		BuiltInRegistries.FLUID, RealisticWater.id("realistic_water"), new RealisticWaterFluid.Source());
+	private static final Map<Material, FlowingFluid> SOURCES = new EnumMap<>(Material.class);
+	private static final Map<Material, FlowingFluid> FLOWING = new EnumMap<>(Material.class);
+	private static final Map<Material, Block> BLOCKS = new EnumMap<>(Material.class);
+	private static final Map<Material, Item> ITEMS = new EnumMap<>(Material.class);
 
-	public static final ResourceKey<Block> REALISTIC_WATER_BLOCK_KEY = ResourceKey.create(Registries.BLOCK, RealisticWater.id("realistic_water"));
-	public static final Block REALISTIC_WATER_BLOCK = Registry.register(BuiltInRegistries.BLOCK, REALISTIC_WATER_BLOCK_KEY, new RealisticWaterBlock(
-		REALISTIC_WATER,
-		BlockBehaviour.Properties.of()
-			.mapColor(MapColor.WATER)
-			.replaceable()
-			.noCollission()
-			.strength(100.0F)
-			.pushReaction(PushReaction.DESTROY)
-			.noLootTable()
-			.liquid()
-			.sound(SoundType.EMPTY)
-			.setId(REALISTIC_WATER_BLOCK_KEY)
-	));
+	static {
+		registerFluid(Material.WATER, MapColor.WATER);
+		registerFluid(Material.MILK, MapColor.SNOW);
+		registerGranular(Material.SAND, MapColor.SAND, SoundType.SAND, NoteBlockInstrument.SNARE);
+		registerGranular(Material.RED_SAND, MapColor.COLOR_ORANGE, SoundType.SAND, NoteBlockInstrument.SNARE);
+		registerGranular(Material.GRAVEL, MapColor.STONE, SoundType.GRAVEL, NoteBlockInstrument.SNARE);
+	}
 
-	public static final ResourceKey<Item> REALISTIC_WATER_BUCKET_KEY = ResourceKey.create(Registries.ITEM, RealisticWater.id("realistic_water_bucket"));
-	public static final Item REALISTIC_WATER_BUCKET = Registry.register(BuiltInRegistries.ITEM, REALISTIC_WATER_BUCKET_KEY, new BucketItem(
-		REALISTIC_WATER, new Item.Properties().craftRemainder(Items.BUCKET).stacksTo(1).setId(REALISTIC_WATER_BUCKET_KEY)));
-
-	public static final ResourceKey<Block> REALISTIC_SAND_KEY = ResourceKey.create(Registries.BLOCK, RealisticWater.id("realistic_sand"));
-	public static final Block REALISTIC_SAND = Registry.register(BuiltInRegistries.BLOCK, REALISTIC_SAND_KEY, new RealisticSandBlock(
-		BlockBehaviour.Properties.of()
-			.mapColor(MapColor.SAND)
-			.instrument(NoteBlockInstrument.SNARE)
-			.strength(0.5F)
-			.sound(SoundType.SAND)
-			.noOcclusion()
-			.pushReaction(PushReaction.DESTROY)
-			.isSuffocating((state, level, pos) -> false)
-			.isViewBlocking((state, level, pos) -> false)
-			.setId(REALISTIC_SAND_KEY)
-	));
-
-	public static final ResourceKey<Item> REALISTIC_SAND_ITEM_KEY = ResourceKey.create(Registries.ITEM, RealisticWater.id("realistic_sand"));
-	public static final Item REALISTIC_SAND_ITEM = registerBlockItem(REALISTIC_SAND_ITEM_KEY, REALISTIC_SAND);
+	public static final FlowingFluid REALISTIC_WATER = SOURCES.get(Material.WATER);
+	public static final FlowingFluid FLOWING_REALISTIC_WATER = FLOWING.get(Material.WATER);
+	public static final Block REALISTIC_WATER_BLOCK = BLOCKS.get(Material.WATER);
+	public static final Item REALISTIC_WATER_BUCKET = ITEMS.get(Material.WATER);
+	public static final Block REALISTIC_SAND = BLOCKS.get(Material.SAND);
+	public static final Item REALISTIC_SAND_ITEM = ITEMS.get(Material.SAND);
 
 	private ModContent() {
 	}
 
-	private static Item registerBlockItem(ResourceKey<Item> key, Block block) {
-		BlockItem item = new BlockItem(block, new Item.Properties().useBlockDescriptionPrefix().setId(key));
+	private static void registerFluid(Material m, MapColor color) {
+		String base = "realistic_" + m.id;
+		FlowingFluid flowing = Registry.register(BuiltInRegistries.FLUID, RealisticWater.id("flowing_" + base), new RealisticWaterFluid.Flowing(m));
+		FlowingFluid source = Registry.register(BuiltInRegistries.FLUID, RealisticWater.id(base), new RealisticWaterFluid.Source(m));
+		FLOWING.put(m, flowing);
+		SOURCES.put(m, source);
+
+		ResourceKey<Block> blockKey = ResourceKey.create(Registries.BLOCK, RealisticWater.id(base));
+		Block block = Registry.register(BuiltInRegistries.BLOCK, blockKey, new RealisticWaterBlock(source,
+			BlockBehaviour.Properties.of()
+				.mapColor(color)
+				.replaceable()
+				.noCollission()
+				.strength(100.0F)
+				.pushReaction(PushReaction.DESTROY)
+				.noLootTable()
+				.liquid()
+				.sound(SoundType.EMPTY)
+				.setId(blockKey)));
+		BLOCKS.put(m, block);
+
+		ResourceKey<Item> bucketKey = ResourceKey.create(Registries.ITEM, RealisticWater.id(base + "_bucket"));
+		ITEMS.put(m, Registry.register(BuiltInRegistries.ITEM, bucketKey,
+			new BucketItem(source, new Item.Properties().craftRemainder(Items.BUCKET).stacksTo(1).setId(bucketKey))));
+	}
+
+	private static void registerGranular(Material m, MapColor color, SoundType sound, NoteBlockInstrument instrument) {
+		ResourceKey<Block> blockKey = ResourceKey.create(Registries.BLOCK, RealisticWater.id("realistic_" + m.id));
+		Block block = Registry.register(BuiltInRegistries.BLOCK, blockKey, new RealisticSandBlock(m,
+			BlockBehaviour.Properties.of()
+				.mapColor(color)
+				.instrument(instrument)
+				.strength(0.5F)
+				.sound(sound)
+				.noOcclusion()
+				.pushReaction(PushReaction.DESTROY)
+				.isSuffocating((state, level, pos) -> false)
+				.isViewBlocking((state, level, pos) -> false)
+				.setId(blockKey)));
+		BLOCKS.put(m, block);
+
+		ResourceKey<Item> itemKey = ResourceKey.create(Registries.ITEM, RealisticWater.id("realistic_" + m.id));
+		BlockItem item = new BlockItem(block, new Item.Properties().useBlockDescriptionPrefix().setId(itemKey));
 		item.registerBlocks(Item.BY_BLOCK, item);
-		return Registry.register(BuiltInRegistries.ITEM, key, item);
+		ITEMS.put(m, Registry.register(BuiltInRegistries.ITEM, itemKey, item));
+	}
+
+	public static Block block(Material m) {
+		return BLOCKS.get(m);
+	}
+
+	/** The bucket (fluids) or block item (granular materials) for a material. */
+	public static Item item(Material m) {
+		return ITEMS.get(m);
+	}
+
+	public static Item bucket(Material m) {
+		return ITEMS.get(m);
+	}
+
+	public static FlowingFluid sourceFluid(Material m) {
+		return SOURCES.get(m);
+	}
+
+	public static FlowingFluid flowingFluid(Material m) {
+		return FLOWING.get(m);
 	}
 
 	static void init() {
-		ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.TOOLS_AND_UTILITIES)
-			.register(entries -> entries.addAfter(Items.WATER_BUCKET, REALISTIC_WATER_BUCKET));
-		ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.NATURAL_BLOCKS)
-			.register(entries -> entries.addAfter(Items.SAND, REALISTIC_SAND_ITEM));
+		ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.TOOLS_AND_UTILITIES).register(entries -> {
+			entries.addAfter(Items.WATER_BUCKET, item(Material.WATER));
+			entries.addAfter(Items.MILK_BUCKET, item(Material.MILK));
+		});
+		ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.NATURAL_BLOCKS).register(entries -> {
+			entries.addAfter(Items.SAND, item(Material.SAND));
+			entries.addAfter(Items.RED_SAND, item(Material.RED_SAND));
+			entries.addAfter(Items.GRAVEL, item(Material.GRAVEL));
+		});
 	}
 }

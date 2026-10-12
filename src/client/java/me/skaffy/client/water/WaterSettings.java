@@ -109,6 +109,26 @@ public final class WaterSettings {
 	public static float sandBrightness = 1.1F;
 	public static boolean sandSounds = true;
 
+	// Milk: the water solver with different optics (nearly opaque, strong white scattering).
+	public static float milkAbsorbR = 30.0F;
+	public static float milkAbsorbG = 30.5F;
+	public static float milkAbsorbB = 32.0F;
+	public static float milkScatterR = 0.97F;
+	public static float milkScatterG = 0.95F;
+	public static float milkScatterB = 0.90F;
+	public static float milkScatterDensity = 30.0F;
+
+	// Red sand: the sand solver with the red sand texture and a touch more cohesion.
+	public static float redSandFrictionAngle = 15.0F;
+	public static float redSandCohesion = 0.02F;
+
+	// Gravel: coarser, steeper and loose (no cohesion), drawn as fewer, bigger stones.
+	public static float gravelFrictionAngle = 24.0F;
+	public static float gravelCohesion = 0.0F;
+	public static float gravelGrainSize = 0.035F;
+	public static int gravelGrainsPerParticle = 6;
+	public static float gravelBrightness = 1.0F;
+
 	public static String ffmpeg = "";
 	public static boolean renderFreezeWorld = true;
 	public static boolean renderSteadyPreview = true;

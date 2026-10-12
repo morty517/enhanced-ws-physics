@@ -1,5 +1,9 @@
 {
   "block.realistic-water.realistic_water": "Realistic Water",
   "block.realistic-water.realistic_sand": "Realistic Sand",
-  "item.realistic-water.realistic_water_bucket": "Realistic Water Bucket"
+  "item.realistic-water.realistic_water_bucket": "Realistic Water Bucket",
+  "block.realistic-water.realistic_milk": "Realistic Milk",
+  "item.realistic-water.realistic_milk_bucket": "Realistic Milk Bucket",
+  "block.realistic-water.realistic_red_sand": "Realistic Red Sand",
+  "block.realistic-water.realistic_gravel": "Realistic Gravel"
 }

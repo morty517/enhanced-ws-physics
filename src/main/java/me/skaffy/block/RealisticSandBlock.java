@@ -1,5 +1,6 @@
 package me.skaffy.block;
 
+import me.skaffy.Material;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.player.Player;
@@ -17,14 +18,22 @@ import net.minecraft.world.phys.shapes.EntityCollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
+/** Invisible block that records how much of a granular material (sand, red sand, gravel) the simulation left here. */
 public class RealisticSandBlock extends Block {
 	public static final int MAX_LAYERS = 8;
 	public static final IntegerProperty LAYERS = BlockStateProperties.LAYERS;
 	private static final VoxelShape[] SHAPES = Block.boxes(MAX_LAYERS, height -> Block.column(16.0, 0.0, height * 2));
 
-	public RealisticSandBlock(Properties properties) {
+	private final Material material;
+
+	public RealisticSandBlock(Material material, Properties properties) {
 		super(properties);
+		this.material = material;
 		this.registerDefaultState(this.stateDefinition.any().setValue(LAYERS, MAX_LAYERS));
+	}
+
+	public Material material() {
+		return this.material;
 	}
 
 	public static int layers(BlockState state) {

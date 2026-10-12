@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
+import me.skaffy.Material;
 import me.skaffy.RealisticWater;
 import me.skaffy.client.gl.ComputeProgram;
 import me.skaffy.client.gl.Desc;
@@ -17,11 +18,18 @@ import net.minecraft.resources.ResourceLocation;
 import me.skaffy.client.gl.Cmd;
 
 final class SandRenderer implements AutoCloseable {
-	private static final ResourceLocation SAND_TEXTURE = ResourceLocation.withDefaultNamespace("textures/block/sand.png");
+	private static ResourceLocation textureFor(Material m) {
+		return ResourceLocation.withDefaultNamespace("textures/block/" + switch (m) {
+			case RED_SAND -> "red_sand";
+			case GRAVEL -> "gravel";
+			default -> "sand";
+		} + ".png");
+	}
 
 	private final GraphicsProgram grains;
 	private final ComputeProgram cull;
-	private final GlBuf texture;
+	/** Grain colours per granular material: the vanilla block texture, sampled per grain by sand_shade.glsl. */
+	private final java.util.EnumMap<Material, GlBuf> textures = new java.util.EnumMap<>(Material.class);
 
 	SandRenderer() {
 		int U = Desc.UBO;
@@ -30,14 +38,18 @@ final class SandRenderer implements AutoCloseable {
 			GraphicsProgram.Blend.NONE);
 		this.grains = new GraphicsProgram("grain.vert", "grain.frag", Map.of(), opaque, U, S, S);
 		this.cull = new ComputeProgram("grain_cull.comp", U, S, S, S, S, S);
-		this.texture = loadTexture();
+		for (Material m : Material.VALUES) {
+			if (m.granular()) {
+				this.textures.put(m, loadTexture(textureFor(m)));
+			}
+		}
 	}
 
-	private static GlBuf loadTexture() {
+	private static GlBuf loadTexture(ResourceLocation id) {
 		int[] argb;
 		int w;
 		int h;
-		try (InputStream in = Minecraft.getInstance().getResourceManager().open(SAND_TEXTURE); NativeImage image = NativeImage.read(in)) {
+		try (InputStream in = Minecraft.getInstance().getResourceManager().open(id); NativeImage image = NativeImage.read(in)) {
 			w = image.getWidth();
 			h = Math.min(image.getHeight(), w);
 			argb = new int[w * h];
@@ -47,7 +59,7 @@ final class SandRenderer implements AutoCloseable {
 				}
 			}
 		} catch (Exception e) {
-			RealisticWater.LOGGER.warn("Couldn't read {}, using a flat sand colour", SAND_TEXTURE, e);
+			RealisticWater.LOGGER.warn("Couldn't read {}, using a flat sand colour", id, e);
 			w = 1;
 			h = 1;
 			argb = new int[]{0xFFDBCFA3};
@@ -93,7 +105,7 @@ final class SandRenderer implements AutoCloseable {
 		GraphicsProgram.begin(cb, width, height, mainColor, null, mainDepth);
 		for (WaterRenderer.Body body : bodies) {
 			WaterRegion r = body.region();
-			this.grains.bind(cb, body.ubo(), Desc.ssbo(r.surfaceParticles), Desc.ssbo(this.texture));
+			this.grains.bind(cb, body.ubo(), Desc.ssbo(r.surfaceParticles), Desc.ssbo(this.textures.getOrDefault(r.material, this.textures.get(Material.SAND))));
 			this.grains.drawIndirect(cb, r.args, WaterRegion.ARGS_GRAIN_DRAW);
 		}
 		GraphicsProgram.end(cb);
@@ -103,6 +115,6 @@ final class SandRenderer implements AutoCloseable {
 	public void close() {
 		this.grains.close();
 		this.cull.close();
-		this.texture.close();
+		this.textures.values().forEach(GlBuf::close);
 	}
 }

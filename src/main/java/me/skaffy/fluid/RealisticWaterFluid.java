@@ -1,6 +1,7 @@
 package me.skaffy.fluid;
 
 import java.util.Optional;
+import me.skaffy.Material;
 import me.skaffy.ModContent;
 import me.skaffy.block.RealisticWaterBlock;
 import net.minecraft.core.BlockPos;
@@ -29,24 +30,39 @@ import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.FluidState;
 import org.jetbrains.annotations.Nullable;
 
+/** A simulated fluid (realistic water, realistic milk, ...). Which one is decided by {@link #material}. */
 public abstract class RealisticWaterFluid extends FlowingFluid {
+	protected final Material material;
+
+	protected RealisticWaterFluid(Material material) {
+		this.material = material;
+	}
+
+	public Material material() {
+		return this.material;
+	}
+
 	@Override
 	public Fluid getFlowing() {
-		return ModContent.FLOWING_REALISTIC_WATER;
+		return ModContent.flowingFluid(this.material);
 	}
 
 	@Override
 	public Fluid getSource() {
-		return ModContent.REALISTIC_WATER;
+		return ModContent.sourceFluid(this.material);
 	}
 
 	@Override
 	public Item getBucket() {
-		return ModContent.REALISTIC_WATER_BUCKET;
+		return ModContent.bucket(this.material);
 	}
 
 	public static boolean isRealistic(FluidState state) {
 		return !state.isEmpty() && state.getType() instanceof RealisticWaterFluid;
+	}
+
+	public static @Nullable Material materialOf(FluidState state) {
+		return !state.isEmpty() && state.getType() instanceof RealisticWaterFluid fluid ? fluid.material : null;
 	}
 
 	@Override
@@ -81,14 +97,14 @@ public abstract class RealisticWaterFluid extends FlowingFluid {
 
 	@Override
 	public BlockState createLegacyBlock(final FluidState fluidState) {
-		return ModContent.REALISTIC_WATER_BLOCK.defaultBlockState()
+		return this.material.block().defaultBlockState()
 			.setValue(LiquidBlock.LEVEL, getLegacyLevel(fluidState))
 			.setValue(RealisticWaterBlock.INFINITE, fluidState.isSource());
 	}
 
 	@Override
 	public boolean isSame(final Fluid other) {
-		return other == ModContent.REALISTIC_WATER || other == ModContent.FLOWING_REALISTIC_WATER;
+		return other == this.getSource() || other == this.getFlowing();
 	}
 
 	@Override
@@ -117,6 +133,10 @@ public abstract class RealisticWaterFluid extends FlowingFluid {
 	}
 
 	public static class Flowing extends RealisticWaterFluid {
+		public Flowing(Material material) {
+			super(material);
+		}
+
 		@Override
 		protected void createFluidStateDefinition(final StateDefinition.Builder<Fluid, FluidState> builder) {
 			super.createFluidStateDefinition(builder);
@@ -135,6 +155,10 @@ public abstract class RealisticWaterFluid extends FlowingFluid {
 	}
 
 	public static class Source extends RealisticWaterFluid {
+		public Source(Material material) {
+			super(material);
+		}
+
 		@Override
 		public int getAmount(final FluidState fluidState) {
 			return 8;
