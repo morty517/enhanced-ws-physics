@@ -112,7 +112,7 @@ vec3 sunSpecular(vec3 n, vec3 V, float footprint) {
     return vec3(1.0, 0.96, 0.88) * min(D * Vis * F * NoL * G.shadeB.x, 30.0) * G.sunDir.w;
 }
 
-vec3 shadeAboveWater(vec2 uv, vec3 n, float fd, float sceneDist, float ambient) {
+vec3 shadeAboveWater(vec2 uv, vec3 n, float fd, float sceneDist, float ambient, vec3 absorb, vec4 scatter) {
     vec3 P = viewPosAt(uv, fd);
     vec3 V = normalize(-P);
     n = dot(n, V) < 0.0 ? -n : n;
@@ -137,8 +137,8 @@ vec3 shadeAboveWater(vec2 uv, vec3 n, float fd, float sceneDist, float ambient) 
     vec3 under = texture(sceneColor, ruv).rgb;
     float wet = G.shadeB.y * smoothstep(0.0, 0.03, path);
     under = pow(max(under, vec3(0.0)), vec3(1.0 + wet)) * (1.0 - 0.15 * wet);
-    vec3 transmitted = under * exp(-G.absorb.rgb * path);
-    vec3 scattered = G.scatter.rgb * ambient * (1.0 - exp(-G.scatter.w * path));
+    vec3 transmitted = under * exp(-absorb * path);
+    vec3 scattered = scatter.rgb * ambient * (1.0 - exp(-scatter.w * path));
     vec3 water = transmitted + scattered;
 
     vec3 Rv = reflect(-V, n);
@@ -196,6 +196,8 @@ void main() {
     vec2 uv = gl_FragCoord.xy * G.screen.zw;
     vec4 g = texture(gbuffer, uv);
     float fd = g.w;
+    vec3 n = octDecode(g.xy);
+    vec3 surfaceMix = mixWeights(g.z);
     vec4 foam = texture(foamTex, uv);
     float sceneDev = texture(sceneDepth, uv).r;
     float sceneDist = linearDepth(sceneDev);
@@ -209,18 +211,21 @@ void main() {
     float outDepth = sceneDev;
 
     if (underwater) {
-        vec3 deep = G.scatter.rgb * ambient;
+        vec3 camMix = viewState.z > 0.0 ? mixWeights(viewState.z - 1.0) : vec3(1.0, 0.0, 0.0);
+        vec3 absorb = mixFluidA(camMix).rgb;
+        vec4 scatter = mixFluidB(camMix);
+        vec3 deep = scatter.rgb * ambient;
         float visible = min(sceneDist, 160.0);
         if (hasFluid) {
-            color = shadeSurfaceFromBelow(uv, g.xyz, fd, deep);
+            color = shadeSurfaceFromBelow(uv, n, fd, deep);
             visible = fd;
             vec4 clip = G.proj * vec4(viewPosAt(uv, fd), 1.0);
             outDepth = clip.z / clip.w * 0.5 + 0.5;
         }
-        float fog = G.scatter.w * G.misc.x;
-        color = color * exp(-G.absorb.rgb * visible * G.misc.x) + deep * (1.0 - exp(-fog * visible));
+        float fog = scatter.w * G.misc.x;
+        color = color * exp(-absorb * visible * G.misc.x) + deep * (1.0 - exp(-fog * visible));
     } else if (hasFluid) {
-        color = shadeAboveWater(uv, g.xyz, fd, sceneDist, ambient);
+        color = shadeAboveWater(uv, n, fd, sceneDist, ambient, mixFluidA(surfaceMix).rgb, mixFluidB(surfaceMix));
         vec4 clip = G.proj * vec4(viewPosAt(uv, fd), 1.0);
         outDepth = clip.z / clip.w * 0.5 + 0.5;
     }

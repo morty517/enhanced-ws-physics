@@ -144,7 +144,8 @@ bool advect(uint i, out Advected r) {
             C = mat3(0.0);
         } else {
             mat3 tau;
-            F = projectSand((mat3(1.0) + DT * C) * F, C[0][0] + C[1][1] + C[2][2], tau);
+            vec4 gm = G.grainA[grainSlot(p.vel.w)];
+            F = projectSand((mat3(1.0) + DT * C) * F, C[0][0] + C[1][1] + C[2][2], gm.x, gm.y, tau);
             tau6 = float[](tau[0][0], tau[1][1], tau[2][2], tau[1][0], tau[2][0], tau[2][1]);
             spread = clamp(sqrt(1.0 / max(density * MPM_VOLUME, 0.05)), 1.0, 3.0);
         }

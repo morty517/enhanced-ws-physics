@@ -33,6 +33,8 @@ public final class SelfTest {
 	private static final int SETTLE_TICKS = 60;
 	/** -Drealisticwater.selftest.scene=pit: dig a 5x5x3 pit in front of the player, fill it with water and drop sand into it. */
 	private static final boolean PIT = "pit".equals(System.getProperty("realisticwater.selftest.scene"));
+	/** -Drealisticwater.selftest.scene=mix: water and milk dropped against each other, gravel dropped onto sand and red sand. */
+	private static final boolean MIX = "mix".equals(System.getProperty("realisticwater.selftest.scene"));
 	private static final float PITCH = PIT ? 62.0F : 25.0F;
 	private static boolean splashShot;
 	private static net.minecraft.core.BlockPos pitOrigin;
@@ -93,6 +95,12 @@ public final class SelfTest {
 					set("resolution", System.getProperty("realisticwater.selftest.resolution", "4"));
 					set("sandResolution", System.getProperty("realisticwater.selftest.sandResolution", "6"));
 					set("coupling", System.getProperty("realisticwater.selftest.coupling", "true"));
+					for (String kv : System.getProperty("realisticwater.selftest.set", "").split(",")) {
+						int eq = kv.indexOf('=');
+						if (eq > 0) {
+							set(kv.substring(0, eq).trim(), kv.substring(eq + 1).trim());
+						}
+					}
 				}
 				if (PIT && ticks == 5) {
 					var bp = mc.player.blockPosition();
@@ -110,6 +118,9 @@ public final class SelfTest {
 					double size = Double.parseDouble(System.getProperty("realisticwater.selftest.waterSize", PIT ? "3.5" : "2"));
 					if (PIT) {
 						dropAt(mc, Material.WATER, size, pitCenter(mc).add(0.0, 2.5, 0.0));
+					} else if (MIX) {
+						drop(mc, Material.WATER, size, -1.05);
+						drop(mc, Boolean.getBoolean("realisticwater.selftest.sus") ? Material.SUSPICIOUS_MILK : Material.MILK, size, 1.05);
 					} else {
 						drop(mc, Material.WATER, size, -2.5);
 						drop(mc, Boolean.getBoolean("realisticwater.selftest.sus") ? Material.SUSPICIOUS_MILK : Material.MILK, size, 2.5);
@@ -144,7 +155,12 @@ public final class SelfTest {
 						RealisticWater.LOGGER.warn("[selftest] clip: {}", me.skaffy.client.water.ClipRecorder.get().start(0.5, 10));
 					}
 					if (PIT) {
-						dropAt(mc, Material.SAND, 1.5, pitCenter(mc).add(0.0, 3.5, 0.0));
+						Material into = Material.byId(System.getProperty("realisticwater.selftest.pitDrop", "sand"));
+						dropAt(mc, into != null ? into : Material.SAND, 1.5, pitCenter(mc).add(0.0, 3.5, 0.0));
+					} else if (MIX) {
+						drop(mc, Material.SAND, 1.5, 0.8, 0.0);
+						drop(mc, Material.RED_SAND, 1.5, -0.8, 0.0);
+						drop(mc, Material.GRAVEL, 1.5, 0.0, 2.5);
 					} else {
 						drop(mc, Material.SAND, 1.5, 3.5);
 						drop(mc, Material.RED_SAND, 1.5, 0.0);
@@ -207,8 +223,12 @@ public final class SelfTest {
 	}
 
 	private static void drop(Minecraft mc, Material material, double size, double sideways) {
+		drop(mc, material, size, sideways, 0.0);
+	}
+
+	private static void drop(Minecraft mc, Material material, double size, double sideways, double up) {
 		Vec3 eye = mc.player.getEyePosition();
-		Vec3 center = eye.add(0.0, 0.5, 6.0).add(sideways, 0.0, 0.0);
+		Vec3 center = eye.add(0.0, 0.5 + up, 6.0).add(sideways, 0.0, 0.0);
 		double half = size * 0.5;
 		WaterWorld.get().addEmitter(new WaterRegion.Emitter(center.x - half, center.y - half, center.z - half,
 			center.x + half, center.y + half, center.z + half, 0, 0, 0), material);

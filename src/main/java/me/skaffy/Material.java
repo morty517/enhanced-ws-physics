@@ -48,6 +48,34 @@ public enum Material {
 		return this.granular() ? 1.0F : 0.0F;
 	}
 
+	/** Materials of one kind share a simulation; this is the region key (water for fluids, sand for granular materials). */
+	public Material base() {
+		return this.fluid() ? WATER : SAND;
+	}
+
+	/**
+	 * Index of the material within its kind (0..2), used by the shaders: fluid particles carry a mixture of slots, grains carry
+	 * one slot. Slot 0 is the base material.
+	 */
+	public int slot() {
+		return switch (this) {
+			case WATER, SAND -> 0;
+			case MILK, RED_SAND -> 1;
+			case SUSPICIOUS_MILK, GRAVEL -> 2;
+		};
+	}
+
+	public static final int SLOTS = 3;
+
+	public static Material bySlot(Kind kind, int slot) {
+		for (Material m : VALUES) {
+			if (m.kind == kind && m.slot() == slot) {
+				return m;
+			}
+		}
+		return kind == Kind.FLUID ? WATER : SAND;
+	}
+
 	public byte networkId() {
 		return (byte) this.ordinal();
 	}

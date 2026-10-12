@@ -41,7 +41,8 @@ void main() {
         if (type > 0.5 && type < 1.5) {
             a *= 0.15;
         }
-        a *= exp(-myDist * G.scatter.w * G.misc.x * 2.0);
+        vec3 camMix = viewState.z > 0.0 ? mixWeights(viewState.z - 1.0) : vec3(1.0, 0.0, 0.0);
+        a *= exp(-myDist * mixFluidB(camMix).w * G.misc.x * 2.0);
     } else if (fd > 0.0 && myDist > fd + 0.08) {
         a *= exp(-(myDist - fd) * 1.8);
     }

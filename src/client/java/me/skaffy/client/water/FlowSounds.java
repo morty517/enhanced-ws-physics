@@ -22,15 +22,15 @@ final class FlowSounds {
 	private final RandomSource random = RandomSource.create();
 	private int tick;
 
-	void onFill(Material material, WaterRegion.Fill f, Vec3 listener) {
-		boolean water = material.fluid();
-		SoundType grains = material == Material.GRAVEL ? SoundType.GRAVEL : SoundType.SAND;
+	void onFill(Material.Kind kind, WaterRegion.Fill f, Vec3 listener) {
+		boolean water = kind == Material.Kind.FLUID;
 		if (water ? !WaterSettings.flowSounds : !WaterSettings.sandSounds) {
 			return;
 		}
 		float moving = water ? 0.4F : 0.3F;
 		float fast = water ? 4.0F : 2.5F;
 		List<int[]> candidates = new ArrayList<>();
+		List<SoundType> grainSounds = new ArrayList<>();
 		List<Float> speeds = new ArrayList<>();
 		float weight = 0.0F;
 		float fastWeight = 0.0F;
@@ -49,6 +49,7 @@ final class FlowSounds {
 						continue;
 					}
 					candidates.add(new int[]{f.x() + x, f.y() + y, f.z() + z});
+					grainSounds.add(Material.bySlot(kind, f.slot(i)) == Material.GRAVEL ? SoundType.GRAVEL : SoundType.SAND);
 					speeds.add(speed);
 					weight += Math.min(speed / 1.5F, 2.0F);
 					if (speed >= fast) {
@@ -70,17 +71,19 @@ final class FlowSounds {
 			if (water) {
 				this.schedule(b, SoundEvents.WATER_AMBIENT, (0.45F + 0.45F * loud) * volumeScale, this.random.nextFloat() + 0.5F);
 			} else {
+				SoundType grains = grainSounds.get(pick);
 				SoundEvent sound = this.random.nextBoolean() ? grains.getStepSound() : grains.getHitSound();
 				this.schedule(b, sound, (0.12F + 0.25F * loud) * volumeScale, 0.7F + this.random.nextFloat() * 0.5F);
 			}
 		}
 		int impacts = this.roll(Math.min(fastWeight * 0.03F, 1.0F));
 		for (int k = 0; k < impacts; k++) {
-			int[] b = candidates.get(this.random.nextInt(candidates.size()));
+			int pick = this.random.nextInt(candidates.size());
+			int[] b = candidates.get(pick);
 			if (water) {
 				this.schedule(b, SoundEvents.GENERIC_SPLASH, 0.25F * volumeScale, 0.8F + this.random.nextFloat() * 0.4F);
 			} else {
-				this.schedule(b, grains.getFallSound(), 0.35F * volumeScale, 0.8F + this.random.nextFloat() * 0.3F);
+				this.schedule(b, grainSounds.get(pick).getFallSound(), 0.35F * volumeScale, 0.8F + this.random.nextFloat() * 0.3F);
 			}
 		}
 	}

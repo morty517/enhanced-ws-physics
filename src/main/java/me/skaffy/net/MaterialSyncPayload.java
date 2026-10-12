@@ -81,12 +81,15 @@ public record MaterialSyncPayload(byte material, long[] positions, byte[] amount
 				continue;
 			}
 			boolean ours = current.getBlock() == m.block();
+			// Materials of one kind share a simulation, so a block can turn from one into another (water mixing into milk...).
+			Material there = Material.of(current);
+			boolean sameKind = there != null && there.kind == m.kind;
 			int amount = this.amounts[i];
 			if (amount <= 0) {
 				if (ours) {
 					level.setBlock(pos, Blocks.AIR.defaultBlockState(), SYNC_FLAGS);
 				}
-			} else if (ours || current.isAir()) {
+			} else if (ours || sameKind || current.isAir()) {
 				BlockState target = stateFor(m, amount);
 				if (current != target) {
 					level.setBlock(pos, target, SYNC_FLAGS);

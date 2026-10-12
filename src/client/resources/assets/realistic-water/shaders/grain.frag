@@ -7,6 +7,7 @@ layout(location = 3) flat in uint vSeed;
 layout(location = 4) flat in vec3 vWorld;
 layout(location = 5) flat in vec3 vNormal;
 layout(location = 6) flat in float vShade;
+layout(location = 7) flat in int vSlot;
 layout(location = 0) out vec4 outColor;
 
 #define SAND_TEX_BINDING 2
@@ -22,6 +23,6 @@ void main() {
     gl_FragDepth = clip.z / clip.w * 0.5 + 0.5; // GL: NDC z [-1,1] -> depth [0,1]
     uint s = vSeed;
     vec3 nWorld = normalize(mat3(G.invView) * vNormal);
-    vec3 albedo = sandAlbedo(vWorld, nWorld, 0.0) * (0.92 + 0.2 * rand(s));
-    outColor = vec4(sandLight(nWorld, albedo, vShade), 1.0);
+    vec3 albedo = sandAlbedo(vSlot, vWorld, nWorld, 0.0) * (0.92 + 0.2 * rand(s));
+    outColor = vec4(sandLight(nWorld, albedo, vShade, G.grainA[vSlot].w), 1.0);
 }

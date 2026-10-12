@@ -56,6 +56,13 @@ layout(std140, binding = 0) uniform Globals {
     vec4 matC;
     vec4 matD;
     vec4 matE;
+    // Per-material tables, indexed by Material.slot(): fluids mix slots per particle, grains carry one slot each.
+    vec4 fluidA[4]; // absorb rgb, FLIP ratio for this step
+    vec4 fluidB[4]; // scatter rgb, scatter density
+    vec4 fluidC[4]; // film friction, stranded time
+    vec4 grainA[4]; // friction alpha, cohesion, grain radius, brightness
+    vec4 grainB[4]; // water drag rate, grains drawn per particle
+    vec4 mixInfo;   // x = fluid mixing rate (1/s)
 } G;
 
 bool isSand() {
@@ -82,6 +89,81 @@ bool isSand() {
 const float COUPLE_FP = 4096.0;
 
 const float FP_SCALE = 65536.0;
+
+// ---- Material mixtures -------------------------------------------------------------------------------------------------
+// A fluid particle's vel.w holds its mixture as an exact integer in a float: fraction of slot 1 * 1023 + 1024 * (fraction of
+// slot 2 * 1023); slot 0 (water) is the rest. A grain's vel.w holds slot + a random fraction (the grain's look).
+// The cellMix grids hold per cell: x = particle count, y/z = summed slot 1/2 fractions * MIX_FP.
+const float MIX_FP = 256.0;
+
+vec3 mixWeights(float code) {
+    float c = round(max(code, 0.0));
+    float hi = floor(c / 1024.0);
+    vec2 f = vec2(c - hi * 1024.0, hi) / 1023.0;
+    return vec3(max(1.0 - f.x - f.y, 0.0), f);
+}
+
+vec3 normalizeMix(vec3 w) {
+    w = max(w, vec3(0.0));
+    float s = w.x + w.y + w.z;
+    return s > 1e-6 ? w / s : vec3(1.0, 0.0, 0.0);
+}
+
+float mixCodeQ(vec2 q) {
+    q = clamp(q, vec2(0.0), vec2(1023.0));
+    if (q.x + q.y > 1023.0) {
+        q.x = 1023.0 - q.y;
+    }
+    return q.x + 1024.0 * q.y;
+}
+
+float mixCode(vec3 w) {
+    return mixCodeQ(round(normalizeMix(w).yz * 1023.0));
+}
+
+int grainSlot(float tag) {
+    return clamp(int(floor(tag)), 0, 2);
+}
+
+int dominantSlot(vec3 w) {
+    return w.y > w.x && w.y >= w.z ? 1 : (w.z > w.x && w.z > w.y ? 2 : 0);
+}
+
+float slotCode(int slot) {
+    return slot == 1 ? 1023.0 : (slot == 2 ? 1023.0 * 1024.0 : 0.0);
+}
+
+vec4 mixFluidA(vec3 w) { return w.x * G.fluidA[0] + w.y * G.fluidA[1] + w.z * G.fluidA[2]; }
+// Scattering adds up by density, so the colour is the density-weighted mean (a little milk turns water milky).
+vec4 mixFluidB(vec3 w) {
+    vec3 d = w * vec3(G.fluidB[0].w, G.fluidB[1].w, G.fluidB[2].w);
+    float total = d.x + d.y + d.z;
+    vec3 c = (d.x * G.fluidB[0].rgb + d.y * G.fluidB[1].rgb + d.z * G.fluidB[2].rgb) / max(total, 1e-6);
+    return vec4(total > 1e-6 ? c : G.fluidB[0].rgb, total);
+}
+vec4 mixFluidC(vec3 w) { return w.x * G.fluidC[0] + w.y * G.fluidC[1] + w.z * G.fluidC[2]; }
+
+// Summed weights (slot0, slot1, slot2) of a cellMix entry.
+vec3 mixSums(ivec4 m) {
+    return vec3(float(m.x) * MIX_FP - float(m.y) - float(m.z), float(m.y), float(m.z));
+}
+
+vec2 signNotZero(vec2 v) {
+    return vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0);
+}
+
+vec2 octEncode(vec3 n) {
+    n /= abs(n.x) + abs(n.y) + abs(n.z);
+    return n.z >= 0.0 ? n.xy : (1.0 - abs(n.yx)) * signNotZero(n.xy);
+}
+
+vec3 octDecode(vec2 e) {
+    vec3 n = vec3(e, 1.0 - abs(e.x) - abs(e.y));
+    if (n.z < 0.0) {
+        n.xy = (1.0 - abs(n.yx)) * signNotZero(n.xy);
+    }
+    return normalize(n);
+}
 
 // Vector component access by a runtime axis index without v[a] syntax. Dynamic indexing of vectors (especially writes
 // into inout/local vec3s) is compiled differently between drivers; these select-based helpers behave identically everywhere.

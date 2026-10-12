@@ -9,6 +9,7 @@ layout(std430, binding = 4) readonly buffer Grid { vec4 grid[]; };
 #else
 layout(std430, binding = 4) readonly buffer Vel { float vel[]; };
 #endif
+layout(std430, binding = 5) readonly buffer Mix { ivec4 cellMix[]; };
 layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
 
 bool fluidAt(ivec3 c) {
@@ -37,6 +38,7 @@ void main() {
     ivec3 block = pc.a.xyz + ivec3(t % nb.x, (t / nb.x) % nb.y, t / (nb.x * nb.y));
     float sum = 0.0;
     float speed = 0.0;
+    vec3 mixSum = vec3(0.0);
     for (int k = 0; k < res * res * res; k++) {
         ivec3 c = block * res + ivec3(k % res, (k / res) % res, k / (res * res));
         if (!inBox(c)) {
@@ -50,6 +52,7 @@ void main() {
             }
         } else {
             sum += float(cellCount[i]);
+            mixSum += mixSums(cellMix[i]);
             if ((f & 0xFFu) == CELL_FLUID) {
                 speed = max(speed, cellSpeed(c));
             }
@@ -57,5 +60,7 @@ void main() {
     }
     uint full = uint(clamp(sum / (G.simA.y * float(res * res * res)), 0.0, 1.0) * 255.0 + 0.5);
     uint fast = uint(clamp(speed / float(res) * 16.0, 0.0, 255.0));
-    fill[t] = full | (fast << 8);
+    // Bits 16..23: the material slot most of this block is made of (decides which block the host writes).
+    uint slot = uint(dominantSlot(mixSum));
+    fill[t] = full | (fast << 8) | (slot << 16);
 }

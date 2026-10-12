@@ -1,7 +1,5 @@
 #define MPM_MU G.matB.x
 #define MPM_LAMBDA G.matB.y
-#define MPM_ALPHA G.matA.y
-#define MPM_COHESION G.matA.z
 #define MPM_WALL_FRICTION G.matC.x
 #define MPM_VOLUME G.matC.y
 #define MPM_IMPACT_VISCOSITY G.matC.z
@@ -80,7 +78,8 @@ mat3 diag3(vec3 d) {
     return mat3(d.x, 0.0, 0.0, 0.0, d.y, 0.0, 0.0, 0.0, d.z);
 }
 
-mat3 projectSand(mat3 F, float squeeze, out mat3 tau) {
+// alpha / cohesion: the particle's material (grainA[slot].xy).
+mat3 projectSand(mat3 F, float squeeze, float alpha, float cohesion, out mat3 tau) {
     mat3 U;
     vec3 S;
     mat3 V;
@@ -91,13 +90,13 @@ mat3 projectSand(mat3 F, float squeeze, out mat3 tau) {
         e += (MPM_IMPACT_LOG_J - logJ) / 3.0;
         S = exp(e);
     }
-    float tr = e.x + e.y + e.z - MPM_COHESION;
+    float tr = e.x + e.y + e.z - cohesion;
     if (tr >= 0.0) {
-        S = vec3(exp(MPM_COHESION / 3.0));
+        S = vec3(exp(cohesion / 3.0));
     } else {
-        vec3 eh = e - (tr + MPM_COHESION) / 3.0;
+        vec3 eh = e - (tr + cohesion) / 3.0;
         float en = length(eh);
-        float dg = en + (3.0 * MPM_LAMBDA + 2.0 * MPM_MU) / (2.0 * MPM_MU) * tr * MPM_ALPHA;
+        float dg = en + (3.0 * MPM_LAMBDA + 2.0 * MPM_MU) / (2.0 * MPM_MU) * tr * alpha;
         if (dg > 0.0 && en > 1e-12) {
             S = exp(e - dg * eh / en);
         }

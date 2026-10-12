@@ -12,7 +12,8 @@ layout(std430, binding = 7) readonly buffer Static { uint staticSolid[]; };
 layout(std430, binding = 8) readonly buffer Pot { vec2 potential[]; };
 layout(std430, binding = 9) writeonly buffer WwDst { Particle wwDst[]; };
 layout(std430, binding = 10) readonly buffer WwCount { int wwCount[]; };
-layout(std430, binding = 11) readonly buffer Count { int cellCount[]; };
+// Per-cell particle count and mixture sums (count in x), see p2g.comp.
+layout(std430, binding = 11) readonly buffer Mix { ivec4 cellMix[]; };
 layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
 #include "compact.glsl"
 
@@ -24,10 +25,10 @@ bool solidAt(vec3 p) {
 }
 
 int countAt(ivec3 c) {
-    return inBox(c) ? cellCount[cellIndex(c)] : 0;
+    return inBox(c) ? cellMix[cellIndex(c)].x : 0;
 }
 
-bool waterFilm(vec3 x, inout vec3 v, inout vec3 dx, inout float dryness) {
+bool waterFilm(vec3 x, vec4 film, inout vec3 v, inout vec3 dx, inout float dryness) {
     ivec3 c = ivec3(floor(x));
     int n27 = 0;
     int column = 0;
@@ -43,14 +44,14 @@ bool waterFilm(vec3 x, inout vec3 v, inout vec3 dx, inout float dryness) {
         float speed = length(v.xz);
         bool groundAhead = speed < 1e-3 || solidAt(x + vec3(v.x / speed, -1.0, v.z / speed));
         if (thin > 0.0 && groundAhead) {
-            float damp = exp(-G.matB.x * thin * DT);
+            float damp = exp(-film.x * thin * DT);
             v.xz *= damp;
             dx.xz *= damp;
         }
     }
     float res = G.camGrid.w;
     if (n27 < int(G.matB.z) && length(v) < 1.5 * res) {
-        dryness += DT / max(G.matB.y, 1e-3);
+        dryness += DT / max(film.y, 1e-3);
     } else {
         dryness = 0.0;
     }
@@ -147,10 +148,11 @@ void emitWhitewater(uint id, vec3 x, vec3 v) {
 }
 
 // Advances particle i. Returns false when it dies this step (or the slot is past the live count).
-bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out bool griddedOut) {
+bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out float mixOut, out bool griddedOut) {
     xnOut = vec3(0.0);
     vOut = vec3(0.0);
     tagOut = 0.0;
+    mixOut = 0.0;
     griddedOut = false;
     if (i >= counters[pc.a.x]) {
         return false;
@@ -162,16 +164,27 @@ bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out bool gr
     vec3 x = p.pos.xyz;
     vec3 v = p.vel.xyz;
     float tag = p.pos.w;
+    vec3 mw = mixWeights(p.vel.w);
     float maxSpeed = G.simB.x;
     bool gridded = inInnerBox(x);
     vec3 dx;
     if (gridded) {
         vec3 uNew = sampleVel(x);
         vec3 uOld = sampleVelOld(x);
-        v = mix(uNew, v + (uNew - uOld), G.simA.x);
+        v = mix(uNew, v + (uNew - uOld), mixFluidA(mw).w);
         dx = DT * sampleVel(x + 0.5 * DT * uNew);
-        if (!waterFilm(x, v, dx, tag)) {
+        if (!waterFilm(x, mixFluidC(mw), v, dx, tag)) {
             return false;
+        }
+        // Mixing: relax towards the cell's mean mixture. Codes are quantised to 1/1023, so round stochastically or slow
+        // mixing would never move a particle off its code.
+        ivec3 mc = ivec3(floor(x));
+        if (inBox(mc) && G.mixInfo.x > 0.0) {
+            ivec4 cm = cellMix[cellIndex(mc)];
+            if (cm.x > 1) {
+                vec3 mean = mixSums(cm) / (float(cm.x) * MIX_FP);
+                mw = mix(mw, mean, 1.0 - exp(-G.mixInfo.x * DT));
+            }
         }
     } else {
         v += G.gravityDt.xyz * DT;
@@ -199,6 +212,8 @@ bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out bool gr
     xnOut = xn;
     vOut = v;
     tagOut = tag;
+    uint seed = hash(i * 2246822519u + uint(pc.a.w) * 3266489917u);
+    mixOut = mixCodeQ(floor(normalizeMix(mw).yz * 1023.0 + vec2(rand(seed), rand(seed))));
     griddedOut = gridded;
     return true;
 }
@@ -210,12 +225,13 @@ void main() {
     vec3 xn;
     vec3 v;
     float tag;
+    float mixCodeOut;
     bool gridded;
-    bool alive = advect(i, xn, v, tag, gridded);
+    bool alive = advect(i, xn, v, tag, mixCodeOut, gridded);
     uint o = compactReserve(alive, alive ? length(v) : 0.0, true, uint(pc.a.y));
     bool wrote = alive && o < uint(G.caps.x);
     if (wrote) {
-        dst[o] = Particle(vec4(xn, tag), vec4(v, 0.0));
+        dst[o] = Particle(vec4(xn, tag), vec4(v, mixCodeOut));
     }
     compactBounds(wrote, uvec3(ivec3(floor(xn)) + AABB_BIAS));
     if (wrote && pc.b.y != 0 && gridded) {

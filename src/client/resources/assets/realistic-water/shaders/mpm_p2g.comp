@@ -7,6 +7,7 @@ layout(std430, binding = 2) readonly buffer State { float state[]; };
 layout(std430, binding = 3) buffer Grid { int grid[]; };
 layout(std430, binding = 4) buffer Count { int cellCount[]; };
 layout(std430, binding = 5) readonly buffer Counters { uint counters[]; };
+layout(std430, binding = 6) buffer Mix { int cellMix[]; };
 layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
 
 void main() {
@@ -54,6 +55,12 @@ void main() {
     }
     ivec3 cell = ivec3(floor(x));
     if (inBox(cell)) {
-        atomicAdd(cellCount[cellIndex(cell)], 1);
+        int ci = cellIndex(cell);
+        atomicAdd(cellCount[ci], 1);
+        int slot = grainSlot(p.vel.w);
+        atomicAdd(cellMix[4 * ci], 1);
+        if (slot > 0) {
+            atomicAdd(cellMix[4 * ci + slot], int(MIX_FP));
+        }
     }
 }

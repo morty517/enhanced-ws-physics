@@ -47,3 +47,12 @@ Java 21 is enough to run Gradle (Loom 1.14).
   every 15 frames, saves screenshots to `run-selftest/screenshots/` and quits. Only active with
   `-Drealisticwater.selftest=true`, which that run configuration sets; normal games never run it.
   Extra flags: `-PselftestArgs="-Drealisticwater.selftest.resolution=6 -Drealisticwater.selftest.clip=true"`.
+
+## Materials (additions in this fork)
+
+- Fluids: water, milk, suspicious milk. They share one FLIP simulation per area; each particle carries its mixture
+  (stored in `vel.w`), so fluids push each other, blend over time (`/water set fluidMixRate <1/s>`, 0 keeps them apart)
+  and are shaded per pixel from the mixture at the surface. Blocks are written as whichever fluid dominates them.
+- Granular: sand, red sand, gravel. They share one MPM simulation; each grain keeps its own friction, cohesion, look and
+  water drag, so piles of different materials stack and push each other.
+- Granular materials and fluids are coupled (grains displace water, water drags and lifts grains).

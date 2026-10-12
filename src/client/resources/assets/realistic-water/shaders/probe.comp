@@ -4,6 +4,8 @@ layout(local_size_x = 1) in;
 layout(std430, binding = 1) readonly buffer Dens { int cellDens[]; };
 layout(std430, binding = 2) readonly buffer Flags { uint cellFlags[]; };
 layout(std430, binding = 3) buffer ViewState { uint viewBits[]; };
+layout(std430, binding = 4) readonly buffer Mix { ivec4 cellMix[]; };
+#include "mixgrid.glsl"
 
 float densityAt(vec3 p) {
     ivec3 c = ivec3(floor(p));
@@ -33,4 +35,8 @@ void main() {
     float density = n > 0.0 ? sum / n : 0.0;
     atomicMax(viewBits[0], floatBitsToUint(smoothstep(0.35, 0.6, density)));
     atomicMax(viewBits[1], floatBitsToUint(density));
+    if (density > 0.35) {
+        // Mixture code + 1 (0 = no fluid around the camera); codes are non-negative so the float bits order like the values.
+        atomicMax(viewBits[2], floatBitsToUint(mixCode(mixAt(cam)) + 1.0));
+    }
 }

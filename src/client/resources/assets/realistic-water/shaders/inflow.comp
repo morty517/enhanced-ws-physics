@@ -17,6 +17,9 @@ void main() {
     }
     int local = t % perSource;
     vec4 src = G.sources[s];
+    float slot = floor(src.w / 4.0);
+    src.w -= slot * 4.0;
+    float code = slotCode(int(slot));
     ivec3 c = ivec3(src.xyz) + ivec3(local % res, (local / res) % res, local / (res * res));
     if (!inBox(c)) {
         return;
@@ -39,6 +42,6 @@ void main() {
             return;
         }
         vec3 p = vec3(float(c.x) + rand(seed), bottom + rand(seed) * frac, float(c.z) + rand(seed));
-        dst[o] = Particle(vec4(p, 0.0), vec4(0.0));
+        dst[o] = Particle(vec4(p, 0.0), vec4(0.0, 0.0, 0.0, code));
     }
 }

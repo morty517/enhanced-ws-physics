@@ -25,7 +25,7 @@ COMPUTE = [
 PROGRAMS = [(c, {}) for c in COMPUTE] + [("blockfill.comp", {"MPM": "1"})]
 DROPLETS = {"DROPLETS": "1", "VIEW_BINDING": "3"}
 GRAPHICS = [
-    ("mesh.vert", "mesh_front.frag", {}),
+    ("mesh.vert", "mesh_front.frag", {"MIX_BINDING": "4"}),
     ("particle.vert", "droplet_front.frag", DROPLETS),
     ("mesh.vert", "mesh_thickness.frag", {}),
     ("particle.vert", "droplet_thickness.frag", DROPLETS),

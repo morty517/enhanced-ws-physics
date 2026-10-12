@@ -7,8 +7,10 @@ layout(std430, binding = 2) readonly buffer Static { uint staticSolid[]; };
 // Fluid -> granular coupling: the overlapping fluid region's MAC velocities and particle counts.
 layout(std430, binding = 3) readonly buffer WaterVel { float wvel[]; };
 layout(std430, binding = 4) readonly buffer WaterCount { int wcount[]; };
+layout(std430, binding = 5) readonly buffer Mix { ivec4 cellMix[]; };
+#include "mixgrid.glsl"
 // a.xyz = fluid grid size (cells), a.w = 1 if coupled; b.xyz = granular origin in fluid cells, b.w = fluid res / granular res;
-// c.x = drag rate (1/s), c.y = buoyancy (fraction of gravity cancelled under water)
+// c.y = buoyancy (fraction of gravity cancelled under water); the drag rate comes from the grains' materials (grainB[slot].x)
 layout(std140, binding = 7) uniform PC { ivec4 a; vec4 b; vec4 c; } pc;
 
 ivec3 wFaceDims(int comp) {
@@ -53,7 +55,9 @@ vec3 waterDrag(ivec3 c, vec3 v) {
         return v;
     }
     vec3 vw = vec3(wSampleFace(0, xw), wSampleFace(1, xw), wSampleFace(2, xw)) / pc.b.w;
-    v = mix(v, vw, 1.0 - exp(-pc.c.x * DT));
+    vec3 mw = mixAt(vec3(c) + 0.5);
+    float drag = mw.x * G.grainB[0].x + mw.y * G.grainB[1].x + mw.z * G.grainB[2].x;
+    v = mix(v, vw, 1.0 - exp(-drag * DT));
     return v - G.gravityDt.xyz * DT * pc.c.y;
 }
 

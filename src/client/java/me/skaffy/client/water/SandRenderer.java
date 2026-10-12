@@ -28,8 +28,8 @@ final class SandRenderer implements AutoCloseable {
 
 	private final GraphicsProgram grains;
 	private final ComputeProgram cull;
-	/** Grain colours per granular material: the vanilla block texture, sampled per grain by sand_shade.glsl. */
-	private final java.util.EnumMap<Material, GlBuf> textures = new java.util.EnumMap<>(Material.class);
+	/** Grain colours of every granular material slot (vanilla block textures), sampled per grain by sand_shade.glsl. */
+	private final GlBuf textures;
 
 	SandRenderer() {
 		int U = Desc.UBO;
@@ -38,14 +38,36 @@ final class SandRenderer implements AutoCloseable {
 			GraphicsProgram.Blend.NONE);
 		this.grains = new GraphicsProgram("grain.vert", "grain.frag", Map.of(), opaque, U, S, S);
 		this.cull = new ComputeProgram("grain_cull.comp", U, S, S, S, S, S);
-		for (Material m : Material.VALUES) {
-			if (m.granular()) {
-				this.textures.put(m, loadTexture(textureFor(m)));
-			}
-		}
+		this.textures = loadTextures();
 	}
 
-	private static GlBuf loadTexture(ResourceLocation id) {
+	private record Image(int w, int h, int average, int[] argb) {
+	}
+
+	/** Layout: 4 header ints per slot (width, height, average, texel offset in ints), then the texels of every slot. */
+	private static GlBuf loadTextures() {
+		Image[] images = new Image[4];
+		int total = 16;
+		for (int s = 0; s < 4; s++) {
+			images[s] = loadTexture(textureFor(Material.bySlot(Material.Kind.GRANULAR, Math.min(s, Material.SLOTS - 1))));
+			total += images[s].argb().length;
+		}
+		GlBuf buf = GlBuf.upload(total * 4L, GlBuf.STORAGE);
+		ByteBuffer m = buf.mapped();
+		int offset = 16;
+		for (int s = 0; s < 4; s++) {
+			Image img = images[s];
+			m.putInt(s * 16, img.w()).putInt(s * 16 + 4, img.h()).putInt(s * 16 + 8, img.average()).putInt(s * 16 + 12, offset);
+			for (int i = 0; i < img.argb().length; i++) {
+				m.putInt((offset + i) * 4, img.argb()[i]);
+			}
+			offset += img.argb().length;
+		}
+		buf.flush(0, total * 4L);
+		return buf;
+	}
+
+	private static Image loadTexture(ResourceLocation id) {
 		int[] argb;
 		int w;
 		int h;
@@ -74,15 +96,7 @@ final class SandRenderer implements AutoCloseable {
 		}
 		int n = argb.length;
 		int average = 0xFF000000 | (int) (r / n) << 16 | (int) (g / n) << 8 | (int) (b / n);
-		long bytes = (4L + n) * 4L;
-		GlBuf buf = GlBuf.upload(bytes, GlBuf.STORAGE);
-		ByteBuffer m = buf.mapped();
-		m.putInt(0, w).putInt(4, h).putInt(8, average).putInt(12, 0);
-		for (int i = 0; i < n; i++) {
-			m.putInt(16 + i * 4, argb[i]);
-		}
-		buf.flush(0, bytes);
-		return buf;
+		return new Image(w, h, average, argb);
 	}
 
 	void record(Cmd cb, List<WaterRenderer.Body> bodies, int width, int height, int mainColor, int mainDepth) {
@@ -105,7 +119,7 @@ final class SandRenderer implements AutoCloseable {
 		GraphicsProgram.begin(cb, width, height, mainColor, null, mainDepth);
 		for (WaterRenderer.Body body : bodies) {
 			WaterRegion r = body.region();
-			this.grains.bind(cb, body.ubo(), Desc.ssbo(r.surfaceParticles), Desc.ssbo(this.textures.getOrDefault(r.material, this.textures.get(Material.SAND))));
+			this.grains.bind(cb, body.ubo(), Desc.ssbo(r.surfaceParticles), Desc.ssbo(this.textures));
 			this.grains.drawIndirect(cb, r.args, WaterRegion.ARGS_GRAIN_DRAW);
 		}
 		GraphicsProgram.end(cb);
@@ -115,6 +129,6 @@ final class SandRenderer implements AutoCloseable {
 	public void close() {
 		this.grains.close();
 		this.cull.close();
-		this.textures.values().forEach(GlBuf::close);
+		this.textures.close();
 	}
 }

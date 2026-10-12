@@ -10,6 +10,7 @@ layout(location = 3) flat out uint vSeed;
 layout(location = 4) flat out vec3 vWorld;
 layout(location = 5) flat out vec3 vNormal;
 layout(location = 6) flat out float vShade;
+layout(location = 7) flat out int vSlot;
 
 const vec2 CORNERS[6] = vec2[](vec2(-1, -1), vec2(1, -1), vec2(1, 1), vec2(-1, -1), vec2(1, 1), vec2(-1, 1));
 
@@ -21,6 +22,12 @@ void main() {
     SurfaceParticle p = visible[gl_InstanceID];
     uint child = uint(gl_VertexID) / 6u;
     vec3 nWorld = p.normal.xyz;
+    int slot = grainSlot(p.extra.x);
+    vec4 gm = G.grainA[slot];
+    if (float(child) >= G.grainB[slot].y) {
+        hide();
+        return;
+    }
 
     uint seed = hash(floatBitsToUint(p.extra.x) * 747796405u + child * 2891336453u + 1u);
     vec3 offset = randInSphere(seed) * G.matD.z;
@@ -33,7 +40,7 @@ void main() {
         hide();
         return;
     }
-    float r = G.matB.w * (0.6 + 0.8 * rand(seed));
+    float r = gm.z * (0.6 + 0.8 * rand(seed));
     float pixelR = r * G.proj[1][1] * 0.5 * G.screen.y / dist;
     float minPx = max(G.matD.x, 0.05);
     if (pixelR < minPx) {
@@ -53,4 +60,5 @@ void main() {
     vWorld = G.misc.yzw + rel;
     vNormal = mat3(G.view) * nWorld;
     vShade = p.normal.w;
+    vSlot = slot;
 }

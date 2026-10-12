@@ -51,8 +51,8 @@ import org.jetbrains.annotations.Nullable;
 
 public final class WaterWorld {
 	private static final WaterWorld INSTANCE = new WaterWorld();
-	static final int UBO_SLOT = 4096;
-	static final int UBO_SIZE = 3920;
+	static final int UBO_SLOT = 4352;
+	static final int UBO_SIZE = 4256;
 	static final float PARTICLES_PER_CELL = 8.0F;
 	static final float SAND_POISSON = 0.3F;
 
@@ -189,7 +189,7 @@ public final class WaterWorld {
 
 	private @Nullable WaterRegion regionNear(BlockPos pos, int margin, Material material) {
 		for (WaterRegion r : this.regions) {
-			if (r.material == material && r.res == resolutionFor(material) && r.claims(pos, margin)) {
+			if (r.material == material.base() && r.res == resolutionFor(material) && r.claims(pos, margin)) {
 				return r;
 			}
 		}
@@ -199,7 +199,8 @@ public final class WaterWorld {
 	private WaterRegion regionFor(BlockPos pos, Material material) {
 		WaterRegion r = this.regionNear(pos, JOIN_DISTANCE, material);
 		if (r == null) {
-			r = new WaterRegion(this.nextRegionId++, resolutionFor(material), material);
+			// One simulation per kind: every fluid shares the water solver, every granular material the sand solver.
+			r = new WaterRegion(this.nextRegionId++, resolutionFor(material), material.base());
 			this.regions.add(r);
 		}
 		return r;
@@ -235,7 +236,8 @@ public final class WaterWorld {
 			return;
 		}
 		WaterRegion r = this.regionFor(pos, material);
-		r.addEmitter(new WaterRegion.Emitter(pos.getX(), pos.getY() + y0, pos.getZ(), pos.getX() + 1, pos.getY() + y1, pos.getZ() + 1, 0, 0, 0));
+		r.addEmitter(new WaterRegion.Emitter(pos.getX(), pos.getY() + y0, pos.getZ(), pos.getX() + 1, pos.getY() + y1, pos.getZ() + 1, 0, 0, 0,
+			material.slot()));
 		r.owned.add(pos.asLong());
 	}
 
@@ -244,12 +246,12 @@ public final class WaterWorld {
 			return;
 		}
 		BlockPos center = BlockPos.containing((e.minX() + e.maxX()) / 2, (e.minY() + e.maxY()) / 2, (e.minZ() + e.maxZ()) / 2);
-		this.regionFor(center, material).addEmitter(e);
+		this.regionFor(center, material).addEmitter(e.withSlot(material.slot()));
 	}
 
 	private void removeMaterial(BlockPos pos, double y0, double y1, Material material) {
 		for (WaterRegion r : this.regions) {
-			if (r.material == material && (r.windowContains(pos, 1) || r.claims(pos, 1))) {
+			if (r.material == material.base() && (r.windowContains(pos, 1) || r.claims(pos, 1))) {
 				r.removals.add(new WaterRegion.Removal(pos.getX(), pos.getY() + y0, pos.getZ(), pos.getX() + 1, pos.getY() + y1, pos.getZ() + 1));
 				if (y0 <= 0.0) {
 					r.owned.remove(pos.asLong());
@@ -278,10 +280,11 @@ public final class WaterWorld {
 		if (ClientPlayNetworking.canSend(RemoveAllWaterPayload.TYPE)) {
 			ClientPlayNetworking.send(new RemoveAllWaterPayload(radiusChunks, material));
 		}
-		for (WaterRegion r : List.copyOf(this.regions)) {
-			if (r.material == material) {
-				this.regions.remove(r);
-				r.close();
+		// Materials share regions, so remove only the particles that are mostly this material.
+		for (WaterRegion r : this.regions) {
+			if (r.material == material.base() && r.hasWindow) {
+				int m = WaterRegion.KILL_MARGIN;
+				r.removals.add(new WaterRegion.Removal(r.ox - m, r.oy - m, r.oz - m, r.ox + r.sx + m, r.oy + r.sy + m, r.oz + r.sz + m, material.slot()));
 			}
 		}
 		this.echoes(material).clear();
@@ -388,7 +391,7 @@ public final class WaterWorld {
 
 	private boolean owned(long key, Material material) {
 		for (WaterRegion r : this.regions) {
-			if (r.material == material && r.owned.contains(key)) {
+			if (r.material == material.base() && r.owned.contains(key)) {
 				return true;
 			}
 		}
@@ -455,7 +458,7 @@ public final class WaterWorld {
 				continue;
 			}
 			if (listener != null) {
-				this.sounds.onFill(r.material, fill, listener);
+				this.sounds.onFill(r.material.kind, fill, listener);
 			}
 			if (isHost()) {
 				this.syncBlocks(level, r, fill);
@@ -502,13 +505,22 @@ public final class WaterWorld {
 		return target;
 	}
 
+	/** Amount of any material of {@code kind} in the block (0 if none) and which one, via {@code out[0]}. */
+	private static int amountOfKind(BlockState state, Material.Kind kind, Material[] out) {
+		Material m = Material.of(state);
+		out[0] = m;
+		return m != null && m.kind == kind ? m.amount(state) : 0;
+	}
+
 	private void syncBlocks(ClientLevel level, WaterRegion r, WaterRegion.Fill f) {
-		Material material = r.material;
-		boolean sand = material.granular();
-		Echoes echoes = this.echoes(material);
-		LongArrayList positions = new LongArrayList();
-		ByteArrayList amounts = new ByteArrayList();
+		Material.Kind kind = r.material.kind;
+		boolean sand = kind == Material.Kind.GRANULAR;
+		// Changes are sent per material; a block that switches material is written as the new one (the server replaces the
+		// old material of the same kind) and both block echoes are expected.
+		java.util.EnumMap<Material, LongArrayList> positionsBy = new java.util.EnumMap<>(Material.class);
+		java.util.EnumMap<Material, ByteArrayList> amountsBy = new java.util.EnumMap<>(Material.class);
 		LongOpenHashSet seen = new LongOpenHashSet();
+		Material[] found = new Material[1];
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 		int i = 0;
 		for (int z = 0; z < f.dz(); z++) {
@@ -518,18 +530,36 @@ public final class WaterWorld {
 					long key = pos.asLong();
 					seen.add(key);
 					BlockState state = level.getBlockState(pos);
-					int current = amountOf(state, material);
+					int current = amountOfKind(state, kind, found);
 					if ((current == 0 && !state.isAir()) || RealisticWaterBlock.isInfinite(state)) {
 						continue;
 					}
-					if (echoes.expected.containsKey(key)) {
-						current = echoes.expected.get(key);
+					Material have = current > 0 ? found[0] : null;
+					Material want = Material.bySlot(kind, f.slot(i));
+					// Changes already sent but not echoed back yet win over what the client still shows.
+					if (this.echoes(want).expected.containsKey(key)) {
+						current = this.echoes(want).expected.get(key);
+						have = current > 0 ? want : null;
+					} else if (have != null && this.echoes(have).expected.containsKey(key)) {
+						current = this.echoes(have).expected.get(key);
+						if (current == 0) {
+							have = null;
+						}
 					}
 					int target = sand ? targetLayers(f.fullness(i), f.blocksPerSecond(i), current) : targetAmount(f.fullness(i), current);
-					if (target != current) {
-						positions.add(key);
-						amounts.add((byte) target);
-						echoes.expect(key, target, this.frameCounter);
+					if (target > 0 && have != null && have != want && current > 0) {
+						// Switches material: keep the amount, write the new material over it.
+						positionsBy.computeIfAbsent(want, m -> new LongArrayList()).add(key);
+						amountsBy.computeIfAbsent(want, m -> new ByteArrayList()).add((byte) target);
+						this.echoes(want).expect(key, target, this.frameCounter);
+						this.echoes(have).expect(key, 0, this.frameCounter);
+					} else if (target != current) {
+						Material m = target == 0 ? have : (have != null ? have : want);
+						if (m != null) {
+							positionsBy.computeIfAbsent(m, k -> new LongArrayList()).add(key);
+							amountsBy.computeIfAbsent(m, k -> new ByteArrayList()).add((byte) target);
+							this.echoes(m).expect(key, target, this.frameCounter);
+						}
 					}
 					if (target > 0) {
 						r.owned.add(key);
@@ -547,17 +577,22 @@ public final class WaterWorld {
 		}
 		for (long key : gone) {
 			r.owned.remove(key);
-			this.queueClear(level, key, material, positions, amounts);
+			this.queueClear(level, key, kind, positionsBy, amountsBy);
 		}
-		this.send(material, positions, amounts);
+		for (var e : positionsBy.entrySet()) {
+			this.send(e.getKey(), e.getValue(), amountsBy.get(e.getKey()));
+		}
 	}
 
-	private void queueClear(ClientLevel level, long key, Material material, LongArrayList positions, ByteArrayList amounts) {
+	private void queueClear(ClientLevel level, long key, Material.Kind kind, java.util.Map<Material, LongArrayList> positionsBy,
+		java.util.Map<Material, ByteArrayList> amountsBy) {
 		BlockPos pos = BlockPos.of(key);
-		if (amountOf(level.getBlockState(pos), material) > 0 && !RealisticWaterBlock.isInfinite(level.getBlockState(pos))) {
-			positions.add(key);
-			amounts.add((byte) 0);
-			this.echoes(material).expect(key, 0, this.frameCounter);
+		BlockState state = level.getBlockState(pos);
+		Material m = Material.of(state);
+		if (m != null && m.kind == kind && m.amount(state) > 0 && !RealisticWaterBlock.isInfinite(state)) {
+			positionsBy.computeIfAbsent(m, x -> new LongArrayList()).add(key);
+			amountsBy.computeIfAbsent(m, x -> new ByteArrayList()).add((byte) 0);
+			this.echoes(m).expect(key, 0, this.frameCounter);
 		}
 	}
 
@@ -623,8 +658,21 @@ public final class WaterWorld {
 			return out;
 		}
 		for (Source s : this.sources) {
-			if (s.material() == r.material && r.claims(s.pos(), 2)) {
+			if (s.material().base() == r.material && r.claims(s.pos(), 2)) {
 				out.add(s.pos());
+			}
+		}
+		return out;
+	}
+
+	private List<Source> sourceEntriesFor(WaterRegion r) {
+		List<Source> out = new ArrayList<>();
+		if (!r.material.fluid()) {
+			return out;
+		}
+		for (Source s : this.sources) {
+			if (s.material().base() == r.material && r.claims(s.pos(), 2)) {
+				out.add(s);
 			}
 		}
 		return out;
@@ -787,7 +835,7 @@ public final class WaterWorld {
 			if (sand) {
 				sandBodies.add(body);
 			} else {
-				fluidGroups.computeIfAbsent(r.material, m -> new ArrayList<>()).add(body);
+				fluidGroups.computeIfAbsent(r.material, m -> new ArrayList<>()).add(body); // all fluids share Material.WATER regions
 			}
 		}
 		Gl.barrier(cb);
@@ -832,12 +880,14 @@ public final class WaterWorld {
 		for (WaterRegion r : drained) {
 			this.regions.remove(r);
 			if (isHost() && !this.paused) {
-				LongArrayList positions = new LongArrayList();
-				ByteArrayList amounts = new ByteArrayList();
+				java.util.EnumMap<Material, LongArrayList> positionsBy = new java.util.EnumMap<>(Material.class);
+				java.util.EnumMap<Material, ByteArrayList> amountsBy = new java.util.EnumMap<>(Material.class);
 				for (long key : r.owned) {
-					this.queueClear(level, key, r.material, positions, amounts);
+					this.queueClear(level, key, r.material.kind, positionsBy, amountsBy);
 				}
-				this.send(r.material, positions, amounts);
+				for (var e : positionsBy.entrySet()) {
+					this.send(e.getKey(), e.getValue(), amountsBy.get(e.getKey()));
+				}
 			}
 			r.close();
 		}
@@ -875,7 +925,7 @@ public final class WaterWorld {
 		int sourceCount = sand ? 0 : this.writeSources(r, b, o + 2112);
 		putInts(b, o + 48, !sand && WaterSettings.whitewater ? 1 : 0, sourceCount, !sand && this.localPlayerFirst ? 1 : 0, WaterSettings.wwCellLimit);
 		putFloats(b, o + 64, 0.0F, -WaterSettings.gravity * res, 0.0F, dt);
-		float flip = (float) Math.pow(m == Material.SUSPICIOUS_MILK ? WaterSettings.suspiciousFlipRatio : WaterSettings.flipRatio, dt * 60.0F);
+		float flip = (float) Math.pow(WaterSettings.flipRatio, dt * 60.0F);
 		putFloats(b, o + 80, flip, PARTICLES_PER_CELL, WaterSettings.volumeCorrection, 0.0F);
 		putFloats(b, o + 96, WaterSettings.maxSpeed * res, h, this.simTime, 0.0F);
 		putFloats(b, o + 112, WaterSettings.wwTrappedAirRate, WaterSettings.wwWaveCrestRate, WaterSettings.wwEnergyMin, WaterSettings.wwEnergyMax);
@@ -908,17 +958,8 @@ public final class WaterWorld {
 		putFloats(b, o + 496, fog.x, fog.y, fog.z, 1.0F);
 		putFloats(b, o + 512, WaterSettings.particleRadius * h, WaterSettings.thicknessScale, WaterSettings.refraction,
 			sand ? WaterSettings.sandSurfaceSmoothing : WaterSettings.surfaceSmoothing);
-		if (m == Material.MILK) {
-			putFloats(b, o + 528, WaterSettings.milkAbsorbR, WaterSettings.milkAbsorbG, WaterSettings.milkAbsorbB, 0.0F);
-			putFloats(b, o + 544, WaterSettings.milkScatterR, WaterSettings.milkScatterG, WaterSettings.milkScatterB, WaterSettings.milkScatterDensity);
-		} else if (m == Material.SUSPICIOUS_MILK) {
-			putFloats(b, o + 528, WaterSettings.suspiciousAbsorbR, WaterSettings.suspiciousAbsorbG, WaterSettings.suspiciousAbsorbB, 0.0F);
-			putFloats(b, o + 544, WaterSettings.suspiciousScatterR, WaterSettings.suspiciousScatterG, WaterSettings.suspiciousScatterB,
-				WaterSettings.suspiciousScatterDensity);
-		} else {
-			putFloats(b, o + 528, WaterSettings.absorbR, WaterSettings.absorbG, WaterSettings.absorbB, 0.0F);
-			putFloats(b, o + 544, WaterSettings.scatterR, WaterSettings.scatterG, WaterSettings.scatterB, WaterSettings.scatterDensity);
-		}
+		putFloats(b, o + 528, WaterSettings.absorbR, WaterSettings.absorbG, WaterSettings.absorbB, 0.0F);
+		putFloats(b, o + 544, WaterSettings.scatterR, WaterSettings.scatterG, WaterSettings.scatterB, WaterSettings.scatterDensity);
 		putFloats(b, o + 560, WaterSettings.wwRadius, WaterSettings.foamCoverage, WaterSettings.bubbleAlpha, WaterSettings.sprayAlpha);
 		putFloats(b, o + 3136, (float) (cam.x - r.ox) * res, (float) (cam.y - r.oy) * res, (float) (cam.z - r.oz) * res, res);
 		putFloats(b, o + 3152, WaterSettings.underwaterFog, wrap(cam.x), wrap(cam.y), wrap(cam.z));
@@ -936,7 +977,7 @@ public final class WaterWorld {
 		putInts(b, o + 3264, removals.size(), 0, 0, 0);
 		for (int k = 0; k < removals.size(); k++) {
 			float[] rm = removals.get(k);
-			putFloats(b, o + 3280 + k * 32, rm[0], rm[1], rm[2], 0.0F);
+			putFloats(b, o + 3280 + k * 32, rm[0], rm[1], rm[2], rm[6]);
 			putFloats(b, o + 3296 + k * 32, rm[3], rm[4], rm[5], 0.0F);
 		}
 		float grainsPerCell = WaterSettings.couplingSolidFraction * PARTICLES_PER_CELL
@@ -947,30 +988,71 @@ public final class WaterWorld {
 		putFloats(b, o + 3824, WaterSettings.specular, WaterSettings.wetDarkening, WaterSettings.filmShading, WaterSettings.foamBubbleSize);
 
 		if (sand) {
-			double phi = Math.toRadians(granularFrictionAngle(m));
-			float alpha = (float) (Math.sqrt(2.0 / 3.0) * 2.0 * Math.sin(phi) / (3.0 - Math.sin(phi)));
 			float e = PARTICLES_PER_CELL * WaterSettings.sandStiffness * res * res;
 			float mu = e / (2.0F * (1.0F + SAND_POISSON));
 			float lambda = e * SAND_POISSON / ((1.0F + SAND_POISSON) * (1.0F - 2.0F * SAND_POISSON));
-			putFloats(b, o + 3840, r.material.shaderId(), alpha, granularCohesion(m), 1.0F);
-			putFloats(b, o + 3856, mu, lambda, Math.max(1, m == Material.GRAVEL ? WaterSettings.gravelGrainsPerParticle : WaterSettings.sandGrainsPerParticle),
-				m == Material.GRAVEL ? WaterSettings.gravelGrainSize : WaterSettings.sandGrainSize);
+			int maxGrains = 1;
+			for (Material g : Material.VALUES) {
+				if (g.granular()) {
+					maxGrains = Math.max(maxGrains, grainsPerParticle(g));
+				}
+			}
+			putFloats(b, o + 3840, r.material.shaderId(), 0.0F, 0.0F, 1.0F);
+			putFloats(b, o + 3856, mu, lambda, maxGrains, WaterSettings.sandGrainSize);
 			float impactViscosity = WaterSettings.sandImpactDamping * 0.25F / Math.max(dt, 1e-5F);
 			putFloats(b, o + 3872, WaterSettings.sandWallFriction, 1.0F / PARTICLES_PER_CELL, impactViscosity, WaterSettings.sandImpactRate);
 		} else {
 			putFloats(b, o + 3840, r.material.shaderId(), 0.0F, 0.0F, 1.0F);
-			boolean sus = m == Material.SUSPICIOUS_MILK;
-			putFloats(b, o + 3856, sus ? WaterSettings.suspiciousFilmFriction : WaterSettings.filmFriction,
-				sus ? WaterSettings.suspiciousStrandedTime : WaterSettings.strandedTime, WaterSettings.strandedNeighbors, WaterSettings.filmDepth * res);
+			putFloats(b, o + 3856, WaterSettings.filmFriction, WaterSettings.strandedTime, WaterSettings.strandedNeighbors, WaterSettings.filmDepth * res);
 			putFloats(b, o + 3872, 0.0F, 0.0F, 0.0F, 0.0F);
 		}
-		putFloats(b, o + 3888, WaterSettings.sandGrainMinPixels, m == Material.GRAVEL ? WaterSettings.gravelBrightness : WaterSettings.sandBrightness,
-			WaterSettings.sandGrainSpread, 0.0F);
+		putFloats(b, o + 3888, WaterSettings.sandGrainMinPixels, WaterSettings.sandBrightness, WaterSettings.sandGrainSpread, 0.0F);
 		float impactLogJ = (float) Math.log(Math.max(1.0F - WaterSettings.sandImpactCompression, 0.01F));
 		putFloats(b, o + 3904, WaterSettings.sandRestSpeed * res, WaterSettings.sandRestTime, WaterSettings.sandWakeAccel * WaterSettings.gravity * res * dt,
 			impactLogJ);
+		this.writeMaterialTable(b, o + 3920, dt);
 		this.uboRing.flush(o, UBO_SIZE);
 		return sourceCount;
+	}
+
+	/** fluidA/B/C[4], grainA/B[4], mixInfo: what each material slot is like (see common.glsl). */
+	private void writeMaterialTable(ByteBuffer b, int o, float dt) {
+		for (int s = 0; s < 4; s++) {
+			Material f = Material.bySlot(Material.Kind.FLUID, Math.min(s, Material.SLOTS - 1));
+			float flip = (float) Math.pow(f == Material.SUSPICIOUS_MILK ? WaterSettings.suspiciousFlipRatio : WaterSettings.flipRatio, dt * 60.0F);
+			switch (f) {
+				case MILK -> {
+					putFloats(b, o + s * 16, WaterSettings.milkAbsorbR, WaterSettings.milkAbsorbG, WaterSettings.milkAbsorbB, flip);
+					putFloats(b, o + 64 + s * 16, WaterSettings.milkScatterR, WaterSettings.milkScatterG, WaterSettings.milkScatterB,
+						WaterSettings.milkScatterDensity);
+				}
+				case SUSPICIOUS_MILK -> {
+					putFloats(b, o + s * 16, WaterSettings.suspiciousAbsorbR, WaterSettings.suspiciousAbsorbG, WaterSettings.suspiciousAbsorbB, flip);
+					putFloats(b, o + 64 + s * 16, WaterSettings.suspiciousScatterR, WaterSettings.suspiciousScatterG, WaterSettings.suspiciousScatterB,
+						WaterSettings.suspiciousScatterDensity);
+				}
+				default -> {
+					putFloats(b, o + s * 16, WaterSettings.absorbR, WaterSettings.absorbG, WaterSettings.absorbB, flip);
+					putFloats(b, o + 64 + s * 16, WaterSettings.scatterR, WaterSettings.scatterG, WaterSettings.scatterB, WaterSettings.scatterDensity);
+				}
+			}
+			boolean sus = f == Material.SUSPICIOUS_MILK;
+			putFloats(b, o + 128 + s * 16, sus ? WaterSettings.suspiciousFilmFriction : WaterSettings.filmFriction,
+				sus ? WaterSettings.suspiciousStrandedTime : WaterSettings.strandedTime, 0.0F, 0.0F);
+
+			Material g = Material.bySlot(Material.Kind.GRANULAR, Math.min(s, Material.SLOTS - 1));
+			double phi = Math.toRadians(granularFrictionAngle(g));
+			float alpha = (float) (Math.sqrt(2.0 / 3.0) * 2.0 * Math.sin(phi) / (3.0 - Math.sin(phi)));
+			boolean gravel = g == Material.GRAVEL;
+			putFloats(b, o + 192 + s * 16, alpha, granularCohesion(g), gravel ? WaterSettings.gravelGrainSize : WaterSettings.sandGrainSize,
+				gravel ? WaterSettings.gravelBrightness : WaterSettings.sandBrightness);
+			putFloats(b, o + 256 + s * 16, gravel ? WaterSettings.gravelWaterDrag : WaterSettings.sandWaterDrag, grainsPerParticle(g), 0.0F, 0.0F);
+		}
+		putFloats(b, o + 320, WaterSettings.fluidMixRate, 0.0F, 0.0F, 0.0F);
+	}
+
+	private static int grainsPerParticle(Material m) {
+		return Math.max(1, m == Material.GRAVEL ? WaterSettings.gravelGrainsPerParticle : WaterSettings.sandGrainsPerParticle);
 	}
 
 	private static float granularFrictionAngle(Material m) {
@@ -995,11 +1077,14 @@ public final class WaterWorld {
 
 	private int writeSources(WaterRegion r, ByteBuffer b, int o) {
 		int n = 0;
-		for (BlockPos p : this.sourcesFor(r)) {
+		for (Source s : this.sourceEntriesFor(r)) {
+			BlockPos p = s.pos();
 			if (n >= MAX_SOURCES || !r.windowContains(p, 0)) {
 				continue;
 			}
-			putFloats(b, o + n * 16, (p.getX() - r.ox) * r.res, (p.getY() - r.oy) * r.res, (p.getZ() - r.oz) * r.res, WaterSettings.sourceFill);
+			// w = material slot * 4 + fill height (inflow.comp splits them again)
+			putFloats(b, o + n * 16, (p.getX() - r.ox) * r.res, (p.getY() - r.oy) * r.res, (p.getZ() - r.oz) * r.res,
+				s.material().slot() * 4.0F + Math.min(WaterSettings.sourceFill, 1.0F));
 			n++;
 		}
 		return n;

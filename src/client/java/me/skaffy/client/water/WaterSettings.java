@@ -129,6 +129,8 @@ public final class WaterSettings {
 	public static float suspiciousFlipRatio = 0.8F;
 	public static float suspiciousFilmFriction = 160.0F;
 	public static float suspiciousStrandedTime = 8.0F;
+	/** How fast touching fluids blend into each other (1/s); 0 keeps them apart like oil and water. */
+	public static float fluidMixRate = 0.3F;
 
 	// Red sand: the sand solver with the red sand texture and a touch more cohesion.
 	public static float redSandFrictionAngle = 15.0F;
