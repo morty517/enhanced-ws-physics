@@ -11,7 +11,8 @@
 		"GameRendererMixin",
 		"GlCommandEncoderAccessor",
 		"MinecraftMixin",
-		"MouseHandlerMixin"
+		"MouseHandlerMixin",
+		"WindowMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
