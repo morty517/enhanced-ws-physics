@@ -281,6 +281,7 @@ final class PressureSolver implements AutoCloseable {
 			this.cgUpdate.push(cb, rz, PQ);
 			this.cgUpdate.dispatch(cb, groups, 1, 1);
 			Gl.barrier(cb);
+			Gl.submit(cb);
 			if (k == iterations - 1) {
 				break;
 			}

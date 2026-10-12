@@ -91,6 +91,7 @@ public final class WaterRenderer implements AutoCloseable {
 			WaterRegion r = body.region();
 			r.mesher.build(cb, body.ubo(), r.currentParticles(), r.counters, WaterRegion.C_FLUID + r.cur, r.args, r.staticSolid, r.mesher.fineBox(r.box),
 				WaterSettings.sheetFill);
+			Gl.submit(cb);
 		}
 
 		GlTex.copy(cb, mainDepth, this.sceneDepth.id, w, h);

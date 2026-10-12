@@ -775,6 +775,7 @@ public final class WaterRegion implements AutoCloseable {
 			} else {
 				this.step(cb, ubo, numSources, box, s == 0);
 			}
+			Gl.submit(cb);
 		}
 
 		p[0].bind(cb, ubo, Desc.ssbo(this.counters), Desc.ssbo(this.args));

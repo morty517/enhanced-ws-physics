@@ -181,6 +181,15 @@ public final class Gl {
 		GL42.glMemoryBarrier(GL42.GL_ALL_BARRIER_BITS);
 	}
 
+	/**
+	 * Hands everything queued so far to the GPU. Without this the driver may batch a whole frame of simulation into one
+	 * submission; on a slow GPU that can run past Windows' 2-second watchdog (TDR, event 153 from nvlddmkm), which resets the
+	 * driver and kills the game. Called between simulation steps and pressure-solver iterations to keep submissions short.
+	 */
+	public static void submit(Cmd cmd) {
+		GL11.glFlush();
+	}
+
 	public static void destroyLater(@Nullable AutoCloseable resource) {
 		if (resource != null) {
 			deferred.add(new Deferred(frame + FRAME_RING + 1, resource));
