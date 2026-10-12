@@ -79,6 +79,20 @@ bool isSand() {
 
 const float FP_SCALE = 65536.0;
 
+// Vector component access by a runtime axis index without v[a] syntax. Dynamic indexing of vectors (especially writes
+// into inout/local vec3s) is compiled differently between drivers; these select-based helpers behave identically everywhere.
+bvec3 axisSel(int a) {
+    return equal(ivec3(a), ivec3(0, 1, 2));
+}
+
+float getAxis(vec3 v, int a) {
+    return a == 0 ? v.x : (a == 1 ? v.y : v.z);
+}
+
+vec3 setAxis(vec3 v, int a, float s) {
+    return mix(v, vec3(s), axisSel(a));
+}
+
 int cellIndex(ivec3 c) {
     return c.x + NX * (c.y + NY * c.z);
 }
@@ -149,15 +163,18 @@ bool faceInBox(int comp, ivec3 f) {
 
 bool boxFace(int t, out int comp, out ivec3 f) {
     ivec3 d = boxDims();
-    for (comp = 0; comp < 3; comp++) {
-        ivec3 fd = d + axisVec(comp);
+    int rest = t;
+    for (int c = 0; c < 3; c++) {
+        ivec3 fd = d + axisVec(c);
         int n = fd.x * fd.y * fd.z;
-        if (t < n) {
-            f = G.boxMin.xyz + ivec3(t % fd.x, (t / fd.x) % fd.y, t / (fd.x * fd.y));
+        if (rest < n) {
+            comp = c;
+            f = G.boxMin.xyz + ivec3(rest % fd.x, (rest / fd.x) % fd.y, rest / (fd.x * fd.y));
             return true;
         }
-        t -= n;
+        rest -= n;
     }
+    comp = 3;
     f = ivec3(0);
     return false;
 }

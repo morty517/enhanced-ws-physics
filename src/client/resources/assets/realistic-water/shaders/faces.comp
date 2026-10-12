@@ -23,7 +23,7 @@ void main() {
     int w = accum[2 * i + 1];
     float u = w > 0 ? float(m) / float(w) : 0.0;
     velOld[i] = u;
-    u += G.gravityDt[comp] * DT;
+    u += getAxis(G.gravityDt.xyz, comp) * DT;
 
     uint fa = flagsAt(f - axisVec(comp));
     uint fb = flagsAt(f);
@@ -32,7 +32,7 @@ void main() {
         int ea = int(fa >> 8) - 1;
         int eb = int(fb >> 8) - 1;
         int e = ea >= 0 ? ea : eb;
-        u = e >= 0 ? entVel(e)[comp] : 0.0;
+        u = e >= 0 ? getAxis(entVel(e), comp) : 0.0;
         ok = 1u;
     }
     vel[i] = u;

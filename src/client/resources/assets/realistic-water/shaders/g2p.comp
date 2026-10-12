@@ -71,20 +71,20 @@ vec3 collideStatic(vec3 x, vec3 xn, inout vec3 v) {
         return x;
     }
     vec3 r = x;
-    const int ORDER[3] = int[](1, 0, 2);
     for (int k = 0; k < 3; k++) {
-        int a = ORDER[k];
-        vec3 t = r;
-        t[a] = xn[a];
+        int a = k == 0 ? 1 : (k == 1 ? 0 : 2); // y first, then x, then z
+        float ra = getAxis(r, a);
+        float xa = getAxis(xn, a);
+        vec3 t = setAxis(r, a, xa);
         if (!solidAt(t)) {
             r = t;
         } else {
-            float edge = xn[a] > r[a] ? floor(r[a]) + 0.999 : floor(r[a]) + 0.001;
-            t[a] = edge;
+            float edge = xa > ra ? floor(ra) + 0.999 : floor(ra) + 0.001;
+            t = setAxis(r, a, edge);
             if (!solidAt(t)) {
                 r = t;
             }
-            v[a] = 0.0;
+            v = setAxis(v, a, 0.0);
         }
     }
     return r;
@@ -104,11 +104,13 @@ vec3 collideEntities(vec3 x, inout vec3 v) {
         float best = 1e9;
         float dir = 1.0;
         for (int a = 0; a < 3; a++) {
-            if (dLo[a] < best) { best = dLo[a]; axis = a; dir = -1.0; }
-            if (dHi[a] < best) { best = dHi[a]; axis = a; dir = 1.0; }
+            float la = getAxis(dLo, a);
+            float ha = getAxis(dHi, a);
+            if (la < best) { best = la; axis = a; dir = -1.0; }
+            if (ha < best) { best = ha; axis = a; dir = 1.0; }
         }
-        x[axis] = dir > 0.0 ? hi[axis] + 0.01 : lo[axis] - 0.01;
-        v[axis] = dir * max(dir * v[axis], dir * ve[axis]);
+        x = setAxis(x, axis, dir > 0.0 ? getAxis(hi, axis) + 0.01 : getAxis(lo, axis) - 0.01);
+        v = setAxis(v, axis, dir * max(dir * getAxis(v, axis), dir * getAxis(ve, axis)));
     }
     return x;
 }

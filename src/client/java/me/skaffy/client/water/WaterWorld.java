@@ -1022,7 +1022,8 @@ public final class WaterWorld {
 		return String.format("%d water bodies  fluid %,d  whitewater %,d  |  %d sand bodies  sand particles %,d  |  active %,d cells of %,d allocated  |  "
 				+ "frame %.1f ms  water steps %d x %.1f ms  sand steps %d x %.2f ms  sources %d  %s",
 			bodies, fluid, ww, piles, sand, cells, windowCells, this.smoothedFrameMs, this.lastSteps, this.lastDt * 1000.0F, this.lastSandSteps,
-			this.lastSandDt * 1000.0F, this.sources.size(), isHost() ? "(syncing blocks)" : "(not host: blocks follow the server)");
+			this.lastSandDt * 1000.0F, this.sources.size(), isHost() ? "(syncing blocks)" : "(not host: blocks follow the server)")
+			+ (Gl.deviceInfo().isEmpty() ? "" : "  |  " + Gl.deviceInfo());
 	}
 
 	public int framesRendered() {

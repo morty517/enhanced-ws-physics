@@ -38,6 +38,7 @@ public final class Gl {
 	private static long frame;
 	private static @Nullable Boolean supported;
 	private static @Nullable String unsupportedReason;
+	private static String deviceInfo = "";
 	private static int uboAlignment = 256;
 	private static int ssboAlignment = 256;
 	private static boolean inside;
@@ -55,6 +56,11 @@ public final class Gl {
 			supported = probe();
 		}
 		return supported;
+	}
+
+	/** GPU name and GL version string of the context the simulation runs on (empty before the first probe). */
+	public static String deviceInfo() {
+		return deviceInfo;
 	}
 
 	public static @Nullable String unsupportedReason() {
@@ -83,6 +89,7 @@ public final class Gl {
 		int vertexSsbos = GL11.glGetInteger(GL43.GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS);
 		int bindings = GL11.glGetInteger(GL43.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS);
 		long maxBlock = GL11.glGetInteger(GL43.GL_MAX_SHADER_STORAGE_BLOCK_SIZE) & 0xFFFFFFFFL;
+		deviceInfo = renderer + " | GL " + version;
 		uboAlignment = Math.max(16, GL11.glGetInteger(GL31.GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT));
 		ssboAlignment = Math.max(4, GL11.glGetInteger(GL43.GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT));
 		RealisticWater.LOGGER.info(

@@ -37,7 +37,7 @@ void main() {
         vec3 n = vec3(0.0);
         for (int a = 0; a < 3; a++) {
             ivec3 e = axisVec(a);
-            n[a] += (solid(c + e) ? 0.0 : 1.0) - (solid(c - e) ? 0.0 : 1.0);
+            n = setAxis(n, a, getAxis(n, a) + (solid(c + e) ? 0.0 : 1.0) - (solid(c - e) ? 0.0 : 1.0));
         }
         v = dot(n, n) > 0.0 ? slide(v, normalize(n)) : vec3(0.0);
     } else {
