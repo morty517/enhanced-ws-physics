@@ -1,0 +1,21 @@
+{
+	"required": true,
+	"package": "me.skaffy.client.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"CameraMixin",
+		"ClientLevelMixin",
+		"DeltaTrackerTimerMixin",
+		"FrontendGpuDeviceAccessor",
+		"GameRendererMixin",
+		"LevelRendererMixin",
+		"MinecraftMixin",
+		"MouseHandlerMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}
