@@ -9,17 +9,13 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
-import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandler;
-import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderingRegistry;
-import net.minecraft.client.color.block.BlockTintSources;
-import net.minecraft.client.renderer.block.BlockAndTintGetter;
-import net.minecraft.client.renderer.block.FluidModel;
-import net.minecraft.client.renderer.block.FluidRenderer;
-import net.minecraft.client.resources.model.sprite.Material;
+import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandlerRegistry;
+import net.fabricmc.fabric.api.client.render.fluid.v1.SimpleFluidRenderHandler;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 
 public class RealisticWaterClient implements ClientModInitializer {
 	@Override
@@ -35,19 +31,14 @@ public class RealisticWaterClient implements ClientModInitializer {
 	}
 
 	private static void registerInvisibleFluid() {
-		FluidModel.Unbaked waterModel = new FluidModel.Unbaked(
-			new Material(ResourceLocation.withDefaultNamespace("block/water_still")),
-			new Material(ResourceLocation.withDefaultNamespace("block/water_flow")),
-			new Material(ResourceLocation.withDefaultNamespace("block/water_overlay")),
-			BlockTintSources.water()
-		);
-		FluidRenderHandler invisible = new FluidRenderHandler() {
+		// Water sprites/tint are still provided (break particles, item models), but the block mesh is never drawn:
+		// the simulation renders the surface itself.
+		SimpleFluidRenderHandler invisible = new SimpleFluidRenderHandler(
+			SimpleFluidRenderHandler.WATER_STILL, SimpleFluidRenderHandler.WATER_FLOWING, SimpleFluidRenderHandler.WATER_OVERLAY, 0x3F76E4) {
 			@Override
-			public void renderFluid(
-				FluidRenderer fluidRenderer, BlockPos pos, BlockAndTintGetter level, FluidRenderer.Output output, BlockState blockState, FluidState fluidState
-			) {
+			public void renderFluid(BlockPos pos, BlockAndTintGetter level, VertexConsumer vertexConsumer, BlockState blockState, FluidState fluidState) {
 			}
 		};
-		FluidRenderingRegistry.register(ModContent.REALISTIC_WATER, ModContent.FLOWING_REALISTIC_WATER, waterModel, invisible);
+		FluidRenderHandlerRegistry.INSTANCE.register(ModContent.REALISTIC_WATER, ModContent.FLOWING_REALISTIC_WATER, invisible);
 	}
 }

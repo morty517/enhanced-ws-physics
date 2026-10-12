@@ -6,35 +6,34 @@ import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import me.skaffy.RealisticWater;
-import me.skaffy.client.vk.ComputeProgram;
-import me.skaffy.client.vk.Desc;
-import me.skaffy.client.vk.GraphicsProgram;
-import me.skaffy.client.vk.Vk;
-import me.skaffy.client.vk.VkBuf;
-import me.skaffy.client.vk.VkTex;
+import me.skaffy.client.gl.ComputeProgram;
+import me.skaffy.client.gl.Desc;
+import me.skaffy.client.gl.GraphicsProgram;
+import me.skaffy.client.gl.Gl;
+import me.skaffy.client.gl.GlBuf;
+import me.skaffy.client.gl.GlTex;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
-import org.lwjgl.vulkan.VK10;
-import org.lwjgl.vulkan.VkCommandBuffer;
+import me.skaffy.client.gl.Cmd;
 
 final class SandRenderer implements AutoCloseable {
 	private static final ResourceLocation SAND_TEXTURE = ResourceLocation.withDefaultNamespace("textures/block/sand.png");
 
 	private final GraphicsProgram grains;
 	private final ComputeProgram cull;
-	private final VkBuf texture;
+	private final GlBuf texture;
 
 	SandRenderer() {
 		int U = Desc.UBO;
 		int S = Desc.SSBO;
-		GraphicsProgram.State opaque = new GraphicsProgram.State(VkTex.RGBA8, VkTex.D32, true, true, VK10.VK_COMPARE_OP_GREATER,
+		GraphicsProgram.State opaque = new GraphicsProgram.State(GlTex.RGBA8, GlTex.D32, true, true, GraphicsProgram.LESS,
 			GraphicsProgram.Blend.NONE);
 		this.grains = new GraphicsProgram("grain.vert", "grain.frag", Map.of(), opaque, U, S, S);
 		this.cull = new ComputeProgram("grain_cull.comp", U, S, S, S, S, S);
 		this.texture = loadTexture();
 	}
 
-	private static VkBuf loadTexture() {
+	private static GlBuf loadTexture() {
 		int[] argb;
 		int w;
 		int h;
@@ -64,7 +63,7 @@ final class SandRenderer implements AutoCloseable {
 		int n = argb.length;
 		int average = 0xFF000000 | (int) (r / n) << 16 | (int) (g / n) << 8 | (int) (b / n);
 		long bytes = (4L + n) * 4L;
-		VkBuf buf = VkBuf.upload(bytes, VkBuf.STORAGE);
+		GlBuf buf = GlBuf.upload(bytes, GlBuf.STORAGE);
 		ByteBuffer m = buf.mapped();
 		m.putInt(0, w).putInt(4, h).putInt(8, average).putInt(12, 0);
 		for (int i = 0; i < n; i++) {
@@ -74,7 +73,7 @@ final class SandRenderer implements AutoCloseable {
 		return buf;
 	}
 
-	void record(VkCommandBuffer cb, List<WaterRenderer.Body> bodies, int width, int height, long mainColorView, long mainDepthView) {
+	void record(Cmd cb, List<WaterRenderer.Body> bodies, int width, int height, int mainColor, int mainDepth) {
 		for (WaterRenderer.Body body : bodies) {
 			WaterRegion r = body.region();
 			if (r.takeFieldStale()) {
@@ -82,7 +81,7 @@ final class SandRenderer implements AutoCloseable {
 			}
 			r.args.fill(cb, WaterRegion.ARGS_GRAIN_DRAW + 4, 4, 0);
 		}
-		Vk.barrier(cb);
+		Gl.barrier(cb);
 		for (WaterRenderer.Body body : bodies) {
 			WaterRegion r = body.region();
 			this.cull.bind(cb, body.ubo(), Desc.ssbo(r.currentParticles()), Desc.ssbo(r.mesher.densA), Desc.ssbo(r.surfaceParticles), Desc.ssbo(r.args),
@@ -90,8 +89,8 @@ final class SandRenderer implements AutoCloseable {
 			this.cull.push(cb, WaterRegion.C_FLUID + r.cur);
 			this.cull.dispatchIndirect(cb, r.args, WaterRegion.ARGS_FLUID_DISPATCH);
 		}
-		Vk.barrier(cb);
-		GraphicsProgram.begin(cb, width, height, mainColorView, null, mainDepthView);
+		Gl.barrier(cb);
+		GraphicsProgram.begin(cb, width, height, mainColor, null, mainDepth);
 		for (WaterRenderer.Body body : bodies) {
 			WaterRegion r = body.region();
 			this.grains.bind(cb, body.ubo(), Desc.ssbo(r.surfaceParticles), Desc.ssbo(this.texture));

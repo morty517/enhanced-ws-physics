@@ -2,11 +2,11 @@ package me.skaffy.client.water;
 
 import java.util.ArrayList;
 import java.util.List;
-import me.skaffy.client.vk.ComputeProgram;
-import me.skaffy.client.vk.Desc;
-import me.skaffy.client.vk.Vk;
-import me.skaffy.client.vk.VkBuf;
-import org.lwjgl.vulkan.VkCommandBuffer;
+import me.skaffy.client.gl.ComputeProgram;
+import me.skaffy.client.gl.Desc;
+import me.skaffy.client.gl.Gl;
+import me.skaffy.client.gl.GlBuf;
+import me.skaffy.client.gl.Cmd;
 
 final class PressureSolver implements AutoCloseable {
 	private static final int MAX_LEVELS = 14;
@@ -23,15 +23,15 @@ final class PressureSolver implements AutoCloseable {
 	private int partialCount;
 	private int partialSlots;
 
-	private final VkBuf mgFlags;
-	private final VkBuf mgB;
-	private final VkBuf mgX;
-	private final VkBuf r;
-	private final VkBuf z;
-	private final VkBuf p;
-	private final VkBuf q;
-	private final VkBuf partials;
-	private final VkBuf scalars;
+	private final GlBuf mgFlags;
+	private final GlBuf mgB;
+	private final GlBuf mgX;
+	private final GlBuf r;
+	private final GlBuf z;
+	private final GlBuf p;
+	private final GlBuf q;
+	private final GlBuf partials;
+	private final GlBuf scalars;
 
 	private final ComputeProgram flags0;
 	private final ComputeProgram coarsen;
@@ -123,15 +123,15 @@ final class PressureSolver implements AutoCloseable {
 		this.maxPartials = ComputeProgram.launched(ComputeProgram.groups(this.fineCells, 256));
 		this.box = new int[this.levels][6];
 
-		this.mgFlags = VkBuf.device(total * 4L, 0);
-		this.mgB = VkBuf.device(total * 4L, 0);
-		this.mgX = VkBuf.device(total * 4L, 0);
-		this.r = VkBuf.device(this.fineCells * 4L, 0);
-		this.z = VkBuf.device(this.fineCells * 4L, 0);
-		this.p = VkBuf.device(this.fineCells * 4L, 0);
-		this.q = VkBuf.device(this.fineCells * 4L, 0);
-		this.partials = VkBuf.device(this.maxPartials * 4L, 0);
-		this.scalars = VkBuf.device(64, 0);
+		this.mgFlags = GlBuf.device(total * 4L, 0);
+		this.mgB = GlBuf.device(total * 4L, 0);
+		this.mgX = GlBuf.device(total * 4L, 0);
+		this.r = GlBuf.device(this.fineCells * 4L, 0);
+		this.z = GlBuf.device(this.fineCells * 4L, 0);
+		this.p = GlBuf.device(this.fineCells * 4L, 0);
+		this.q = GlBuf.device(this.fineCells * 4L, 0);
+		this.partials = GlBuf.device(this.maxPartials * 4L, 0);
+		this.scalars = GlBuf.device(64, 0);
 
 		Programs p = programs();
 		this.flags0 = p.flags0;
@@ -183,26 +183,26 @@ final class PressureSolver implements AutoCloseable {
 		return new int[]{f[0], f[1], f[2], this.offsets[fine], c[0], c[1], c[2], this.offsets[coarse], parity, init, fine, coarse};
 	}
 
-	private VkBuf levelB(int l) {
+	private GlBuf levelB(int l) {
 		return l == 0 ? this.r : this.mgB;
 	}
 
-	private VkBuf levelX(int l) {
+	private GlBuf levelX(int l) {
 		return l == 0 ? this.z : this.mgX;
 	}
 
-	private void smooth(VkCommandBuffer cb, Desc ubo, int l, int parity, boolean init) {
+	private void smooth(Cmd cb, Desc ubo, int l, int parity, boolean init) {
 		this.smooth.bind(cb, ubo, Desc.ssbo(this.mgFlags), Desc.ssbo(this.levelB(l)), Desc.ssbo(this.levelX(l)));
 		this.smooth.push(cb, this.push(l, l, parity, init ? 1 : 0));
 		this.smooth.dispatch(cb, this.boxGroups(l), 1, 1);
-		Vk.barrier(cb);
+		Gl.barrier(cb);
 	}
 
-	private void smooth(VkCommandBuffer cb, Desc ubo, int l, int parity) {
+	private void smooth(Cmd cb, Desc ubo, int l, int parity) {
 		this.smooth(cb, ubo, l, parity, false);
 	}
 
-	private void vcycle(VkCommandBuffer cb, Desc ubo) {
+	private void vcycle(Cmd cb, Desc ubo) {
 		for (int l = 0; l < this.levels - 1; l++) {
 			this.smooth(cb, ubo, l, 0, l == 0);
 			this.smooth(cb, ubo, l, 1);
@@ -210,7 +210,7 @@ final class PressureSolver implements AutoCloseable {
 				Desc.ssbo(this.mgB), Desc.ssbo(this.mgX));
 			this.restrict.push(cb, this.push(l, l + 1, 0, 0));
 			this.restrict.dispatch(cb, this.boxGroups(l + 1), 1, 1);
-			Vk.barrier(cb);
+			Gl.barrier(cb);
 		}
 		int coarsest = this.levels - 1;
 		int[] push = this.push(coarsest, coarsest, 0, this.levels == 1 ? 1 : 0);
@@ -219,48 +219,48 @@ final class PressureSolver implements AutoCloseable {
 		this.coarse.bind(cb, ubo, Desc.ssbo(this.mgFlags), Desc.ssbo(this.levelB(coarsest)), Desc.ssbo(this.levelX(coarsest)));
 		this.coarse.push(cb, withSweeps);
 		this.coarse.dispatch(cb, 1, 1, 1);
-		Vk.barrier(cb);
+		Gl.barrier(cb);
 		for (int l = this.levels - 2; l >= 0; l--) {
 			this.prolong.bind(cb, ubo, Desc.ssbo(this.mgFlags), Desc.ssbo(this.levelX(l)), Desc.ssbo(this.mgX));
 			this.prolong.push(cb, this.push(l, l + 1, 0, 0));
 			this.prolong.dispatch(cb, this.boxGroups(l), 1, 1);
-			Vk.barrier(cb);
+			Gl.barrier(cb);
 			this.smooth(cb, ubo, l, 1);
 			this.smooth(cb, ubo, l, 0);
 		}
 	}
 
-	private void reduce(VkCommandBuffer cb, Desc ubo, int slot) {
+	private void reduce(Cmd cb, Desc ubo, int slot) {
 		this.cgReduce.bind(cb, ubo, Desc.ssbo(this.partials), Desc.ssbo(this.scalars));
 		this.cgReduce.push(cb, this.partialSlots, slot);
 		this.cgReduce.dispatch(cb, 1, 1, 1);
-		Vk.barrier(cb);
+		Gl.barrier(cb);
 	}
 
-	private void dot(VkCommandBuffer cb, Desc ubo, VkBuf a, VkBuf b, int slot) {
+	private void dot(Cmd cb, Desc ubo, GlBuf a, GlBuf b, int slot) {
 		this.cgDot.bind(cb, ubo, Desc.ssbo(a), Desc.ssbo(b), Desc.ssbo(this.partials));
 		this.cgDot.dispatch(cb, this.partialCount, 1, 1);
-		Vk.barrier(cb);
+		Gl.barrier(cb);
 		this.reduce(cb, ubo, slot);
 	}
 
-	void solve(VkCommandBuffer cb, Desc ubo, VkBuf cellFlags, VkBuf b, VkBuf x, int iterations, int[] activeBox) {
+	void solve(Cmd cb, Desc ubo, GlBuf cellFlags, GlBuf b, GlBuf x, int iterations, int[] activeBox) {
 		this.setBox(activeBox);
 		int groups = this.partialCount;
 		this.flags0.bind(cb, ubo, Desc.ssbo(cellFlags), Desc.ssbo(this.mgFlags));
 		this.flags0.dispatch(cb, groups, 1, 1);
-		Vk.barrier(cb);
+		Gl.barrier(cb);
 		for (int l = 0; l < this.levels - 1; l++) {
 			this.coarsen.bind(cb, ubo, Desc.ssbo(this.mgFlags));
 			this.coarsen.push(cb, this.push(l, l + 1, 0, 0));
 			this.coarsen.dispatch(cb, this.boxGroups(l + 1), 1, 1);
-			Vk.barrier(cb);
+			Gl.barrier(cb);
 		}
 
 		this.cgInit.bind(cb, ubo, Desc.ssbo(this.mgFlags), Desc.ssbo(b), Desc.ssbo(x), Desc.ssbo(this.r));
 		this.cgInit.push(cb, this.push(0, 0, 0, 0));
 		this.cgInit.dispatch(cb, groups, 1, 1);
-		Vk.barrier(cb);
+		Gl.barrier(cb);
 
 		this.vcycle(cb, ubo);
 		int rz = RZ0;
@@ -268,19 +268,19 @@ final class PressureSolver implements AutoCloseable {
 		this.cgDirection.bind(cb, ubo, Desc.ssbo(this.scalars), Desc.ssbo(this.z), Desc.ssbo(this.p));
 		this.cgDirection.push(cb, 1, 0, 0);
 		this.cgDirection.dispatch(cb, groups, 1, 1);
-		Vk.barrier(cb);
+		Gl.barrier(cb);
 
 		for (int k = 0; k < iterations; k++) {
 			this.cgApply.bind(cb, ubo, Desc.ssbo(this.mgFlags), Desc.ssbo(this.p), Desc.ssbo(this.q), Desc.ssbo(this.partials));
 			this.cgApply.push(cb, this.push(0, 0, 0, 0));
 			this.cgApply.dispatch(cb, groups, 1, 1);
-			Vk.barrier(cb);
+			Gl.barrier(cb);
 			this.reduce(cb, ubo, PQ);
 
 			this.cgUpdate.bind(cb, ubo, Desc.ssbo(this.scalars), Desc.ssbo(this.p), Desc.ssbo(this.q), Desc.ssbo(x), Desc.ssbo(this.r));
 			this.cgUpdate.push(cb, rz, PQ);
 			this.cgUpdate.dispatch(cb, groups, 1, 1);
-			Vk.barrier(cb);
+			Gl.barrier(cb);
 			if (k == iterations - 1) {
 				break;
 			}
@@ -291,7 +291,7 @@ final class PressureSolver implements AutoCloseable {
 			this.cgDirection.bind(cb, ubo, Desc.ssbo(this.scalars), Desc.ssbo(this.z), Desc.ssbo(this.p));
 			this.cgDirection.push(cb, 0, next, rz);
 			this.cgDirection.dispatch(cb, groups, 1, 1);
-			Vk.barrier(cb);
+			Gl.barrier(cb);
 			rz = next;
 		}
 	}

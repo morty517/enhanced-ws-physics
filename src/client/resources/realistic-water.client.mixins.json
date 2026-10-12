@@ -4,11 +4,12 @@
 	"compatibilityLevel": "JAVA_21",
 	"client": [
 		"CameraMixin",
+		"ChunkSectionsToRenderMixin",
 		"ClientLevelMixin",
 		"DeltaTrackerTimerMixin",
-		"FrontendGpuDeviceAccessor",
+		"FogRendererMixin",
 		"GameRendererMixin",
-		"LevelRendererMixin",
+		"GlCommandEncoderAccessor",
 		"MinecraftMixin",
 		"MouseHandlerMixin"
 	],

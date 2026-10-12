@@ -1,7 +1,7 @@
 package me.skaffy.client.water;
 
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
@@ -33,7 +33,7 @@ public final class WaterCommands {
 				return 1;
 			}))
 			.then(literal("reload").executes(c -> {
-				WaterWorld.get().reload(c.getSource().getLevel());
+				WaterWorld.get().reload(c.getSource().getWorld());
 				c.getSource().sendFeedback(Component.literal("Re-reading realistic water blocks around you into fresh simulations"));
 				return 1;
 			}))

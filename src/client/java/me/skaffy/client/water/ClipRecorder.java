@@ -3,9 +3,8 @@ package me.skaffy.client.water;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.buffers.GpuBuffer;
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
-import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.textures.GpuTexture;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -110,7 +109,7 @@ public final class ClipRecorder {
 			return "Already rendering (" + this.framesWritten + "/" + this.totalFrames + " frames). /water render stop cancels it.";
 		}
 		Minecraft mc = Minecraft.getInstance();
-		RenderTarget main = mc.gameRenderer.mainRenderTarget();
+		RenderTarget main = mc.getMainRenderTarget();
 		if (main.getColorTexture() == null || mc.level == null) {
 			return "Nothing to capture yet";
 		}
@@ -182,7 +181,7 @@ public final class ClipRecorder {
 			say(this.stop("the world was unloaded"));
 			return;
 		}
-		RenderTarget main = mc.gameRenderer.mainRenderTarget();
+		RenderTarget main = mc.getMainRenderTarget();
 		if (main.width != this.width || main.height != this.height) {
 			say(this.stop("the window was resized mid-render"));
 			return;
@@ -192,12 +191,12 @@ public final class ClipRecorder {
 			return;
 		}
 		if (this.framesSubmitted == 0) {
-			mc.gui.hud.getChat().clearMessages(false);
+			mc.gui.getChat().clearMessages(false);
 		}
 		GpuBuffer buffer = this.takeBuffer(color);
 		int index = this.framesSubmitted++;
 		this.outstanding++;
-		RenderSystem.getDevice().createCommandEncoder().copyTextureToBuffer(color, buffer, 0L, () -> this.onFrameRead(buffer, index), 0);
+		RenderSystem.getDevice().createCommandEncoder().copyTextureToBuffer(color, buffer, 0, () -> this.onFrameRead(buffer, index), 0);
 		if (this.framesSubmitted >= this.totalFrames) {
 			this.capturing = false;
 			RealisticWater.LOGGER.info("All {} frames submitted, waiting for the last readbacks", this.totalFrames);
@@ -224,7 +223,7 @@ public final class ClipRecorder {
 		if (free != null && !free.isClosed()) {
 			return free;
 		}
-		long size = (long) this.width * this.height * color.getFormat().blockSize();
+		int size = Math.toIntExact((long) this.width * this.height * color.getFormat().pixelSize());
 		return RenderSystem.getDevice().createBuffer(() -> "Realistic Water clip frame",
 			GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_COPY_DST, size);
 	}
@@ -233,7 +232,7 @@ public final class ClipRecorder {
 		this.outstanding--;
 		Sink out = this.sink;
 		byte[] frame = null;
-		try (GpuBufferSlice.MappedView view = buffer.map(true, false)) {
+		try (GpuBuffer.MappedView view = RenderSystem.getDevice().createCommandEncoder().mapBuffer(buffer, true, false)) {
 			ByteBuffer data = view.data();
 			frame = new byte[data.remaining()];
 			data.get(frame);
@@ -365,7 +364,7 @@ public final class ClipRecorder {
 		Minecraft mc = Minecraft.getInstance();
 		mc.execute(() -> {
 			if (mc.player != null) {
-				mc.player.sendSystemMessage(Component.literal(message));
+				mc.player.displayClientMessage(Component.literal(message), false);
 			}
 		});
 	}

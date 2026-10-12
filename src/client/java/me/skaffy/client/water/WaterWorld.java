@@ -1,8 +1,8 @@
 package me.skaffy.client.water;
 
+import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.renderpearl.backend.vulkan.VulkanGpuTexture;
-import com.mojang.renderpearl.backend.vulkan.VulkanGpuTextureView;
+import com.mojang.blaze3d.textures.GpuTexture;
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
@@ -14,20 +14,19 @@ import java.util.List;
 import me.skaffy.ModContent;
 import me.skaffy.RealisticWater;
 import me.skaffy.block.RealisticSandBlock;
-import me.skaffy.client.vk.Desc;
-import me.skaffy.client.vk.Vk;
-import me.skaffy.client.vk.VkBuf;
+import me.skaffy.client.gl.Cmd;
+import me.skaffy.client.gl.Desc;
+import me.skaffy.client.gl.Gl;
+import me.skaffy.client.gl.GlBuf;
 import me.skaffy.block.RealisticWaterBlock;
 import me.skaffy.fluid.RealisticWaterFluid;
 import me.skaffy.net.RemoveAllWaterPayload;
 import me.skaffy.net.SandSyncPayload;
 import me.skaffy.net.WaterSyncPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.state.level.CameraRenderState;
-import net.minecraft.client.renderer.state.level.LevelRenderState;
-import net.minecraft.client.renderer.state.level.SkyRenderState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
@@ -45,11 +44,10 @@ import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.jetbrains.annotations.Nullable;
-import org.lwjgl.vulkan.VK10;
-import org.lwjgl.vulkan.VkCommandBuffer;
 
 public final class WaterWorld {
 	private static final WaterWorld INSTANCE = new WaterWorld();
@@ -71,6 +69,8 @@ public final class WaterWorld {
 	private static final int ECHO_TIMEOUT = 200;
 
 	public static final Matrix4f LEVEL_PROJECTION = new Matrix4f();
+	/** World fog colour of the current frame, captured from FogRenderer.setupFog (1.21.8 has no LevelRenderState yet). */
+	public static final Vector4f FOG_COLOR = new Vector4f(0.5F, 0.7F, 1.0F, 1.0F);
 
 	private static final class Echoes {
 		final Long2IntOpenHashMap expected = new Long2IntOpenHashMap();
@@ -117,8 +117,8 @@ public final class WaterWorld {
 	private @Nullable SolidCache sandSolids;
 	private @Nullable WaterRenderer renderer;
 	private @Nullable SandRenderer sandRenderer;
-	private @Nullable VkBuf uboRing;
-	private @Nullable VkBuf frameView;
+	private @Nullable GlBuf uboRing;
+	private @Nullable GlBuf frameView;
 	private boolean paused;
 	private boolean failed;
 	private long lastFrameNanos;
@@ -204,18 +204,19 @@ public final class WaterWorld {
 		return r;
 	}
 
-	private boolean warnedNoVulkan;
+	private boolean warnedNoGl;
 
-	private boolean vulkanReady() {
-		if (Vk.tryDevice() != null) {
+	private boolean glReady() {
+		if (Gl.ready()) {
 			return true;
 		}
 		Minecraft mc = Minecraft.getInstance();
-		if (!this.warnedNoVulkan && mc.player != null) {
-			this.warnedNoVulkan = true;
-			mc.player.sendSystemMessage(Component.literal(
-				"Realistic Water needs the Vulkan graphics API (Options > Video Settings > Graphics API > Vulkan, then restart). "
-					+ "Minecraft switches back to OpenGL by itself after a crash during startup."));
+		if (!this.warnedNoGl && mc.player != null) {
+			this.warnedNoGl = true;
+			String why = Gl.unsupportedReason();
+			mc.player.displayClientMessage(Component.literal(
+				"Realistic Water (OpenGL port) can't run on this GPU/driver: " + (why != null ? why : "OpenGL 4.3 compute shaders are required")
+					+ ". Updating the graphics driver usually fixes this."), false);
 		}
 		return false;
 	}
@@ -229,7 +230,7 @@ public final class WaterWorld {
 	}
 
 	private void addMaterial(BlockPos pos, double y0, double y1, Material material) {
-		if (y1 <= y0 || !this.vulkanReady()) {
+		if (y1 <= y0 || !this.glReady()) {
 			return;
 		}
 		WaterRegion r = this.regionFor(pos, material);
@@ -238,7 +239,7 @@ public final class WaterWorld {
 	}
 
 	public void addEmitter(WaterRegion.Emitter e, Material material) {
-		if (!this.vulkanReady()) {
+		if (!this.glReady()) {
 			return;
 		}
 		BlockPos center = BlockPos.containing((e.minX() + e.maxX()) / 2, (e.minY() + e.maxY()) / 2, (e.minZ() + e.maxZ()) / 2);
@@ -258,7 +259,7 @@ public final class WaterWorld {
 
 	private void addSource(BlockPos pos) {
 		BlockPos p = pos.immutable();
-		if (this.sources.contains(p) || !this.vulkanReady()) {
+		if (this.sources.contains(p) || !this.glReady()) {
 			return;
 		}
 		if (this.sources.size() >= MAX_SOURCES) {
@@ -288,10 +289,10 @@ public final class WaterWorld {
 		this.closeRegions();
 		this.chunkScanQueue.clear();
 		int radius = Minecraft.getInstance().options.renderDistance().get();
-		ChunkPos center = ChunkPos.containing(Minecraft.getInstance().gameRenderer.gameRenderState().levelRenderState.cameraRenderState.blockPos);
+		ChunkPos center = new ChunkPos(Minecraft.getInstance().gameRenderer.getMainCamera().getBlockPosition());
 		for (int dz = -radius; dz <= radius; dz++) {
 			for (int dx = -radius; dx <= radius; dx++) {
-				this.chunkScanQueue.add(new ChunkPos(center.x() + dx, center.z() + dz));
+				this.chunkScanQueue.add(new ChunkPos(center.x + dx, center.z + dz));
 			}
 		}
 	}
@@ -358,11 +359,11 @@ public final class WaterWorld {
 		ChunkPos pos = chunk.getPos();
 		for (SolidCache cache : new SolidCache[]{this.solids, this.sandSolids}) {
 			if (cache != null) {
-				cache.invalidateChunk(pos.x(), pos.z());
+				cache.invalidateChunk(pos.x, pos.z);
 			}
 		}
 		for (WaterRegion r : this.regions) {
-			if (r.hasWindow && r.overlapsChunk(pos.x(), pos.z())) {
+			if (r.hasWindow && r.overlapsChunk(pos.x, pos.z)) {
 				r.markSolidsDirty(level, this.solids(r.material, r.res));
 			}
 		}
@@ -372,7 +373,7 @@ public final class WaterWorld {
 	public void onChunkUnload(ClientLevel level, LevelChunk chunk) {
 		for (SolidCache cache : new SolidCache[]{this.solids, this.sandSolids}) {
 			if (cache != null) {
-				cache.invalidateChunk(chunk.getPos().x(), chunk.getPos().z());
+				cache.invalidateChunk(chunk.getPos().x, chunk.getPos().z);
 			}
 		}
 	}
@@ -387,10 +388,10 @@ public final class WaterWorld {
 	}
 
 	private void scanChunk(ClientLevel level, ChunkPos chunkPos) {
-		if (!level.hasChunk(chunkPos.x(), chunkPos.z())) {
+		if (!level.hasChunk(chunkPos.x, chunkPos.z)) {
 			return;
 		}
-		LevelChunk chunk = level.getChunk(chunkPos.x(), chunkPos.z());
+		LevelChunk chunk = level.getChunk(chunkPos.x, chunkPos.z);
 		LevelChunkSection[] sections = chunk.getSections();
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 		for (int s = 0; s < sections.length; s++) {
@@ -407,7 +408,7 @@ public final class WaterWorld {
 				if (water == 0 && sand == 0) {
 					continue;
 				}
-				pos.set((chunkPos.x() << 4) + (i & 15), baseY + ((i >> 4) & 15), (chunkPos.z() << 4) + (i >> 8));
+				pos.set((chunkPos.x << 4) + (i & 15), baseY + ((i >> 4) & 15), (chunkPos.z << 4) + (i >> 8));
 				if (RealisticWaterBlock.isInfinite(state)) {
 					this.addSource(pos);
 					continue;
@@ -576,7 +577,7 @@ public final class WaterWorld {
 
 	public void renderFrame() {
 		Minecraft mc = Minecraft.getInstance();
-		if (this.regions.isEmpty() || this.failed || mc.level == null || Vk.tryDevice() == null) {
+		if (this.regions.isEmpty() || this.failed || mc.level == null || !Gl.ready()) {
 			this.lastFrameNanos = 0L;
 			return;
 		}
@@ -586,7 +587,7 @@ public final class WaterWorld {
 			this.failed = true;
 			RealisticWater.LOGGER.error("Realistic Water frame failed; disabling the simulation", e);
 			if (mc.player != null) {
-				mc.player.sendSystemMessage(Component.literal("Realistic Water failed: " + e.getMessage()));
+				mc.player.displayClientMessage(Component.literal("Realistic Water failed: " + e.getMessage()), false);
 			}
 		}
 	}
@@ -611,8 +612,7 @@ public final class WaterWorld {
 			: this.lastFrameNanos == 0L ? 1.0F / 60.0F : (float) Math.min((now - this.lastFrameNanos) / 1.0e9, 0.1);
 		this.lastFrameNanos = now;
 		this.smoothedFrameMs = this.smoothedFrameMs * 0.9F + frameDt * 1000.0F * 0.1F;
-		LevelRenderState levelState = mc.gameRenderer.gameRenderState().levelRenderState;
-		Vec3 cam = levelState.cameraRenderState.pos;
+		Vec3 cam = mc.gameRenderer.getMainCamera().getPosition();
 		double reach = (mc.options.renderDistance().get() + 2) * 16.0;
 
 		List<WaterRegion> active = new ArrayList<>();
@@ -687,14 +687,12 @@ public final class WaterWorld {
 		this.lastSandDt = sandDt;
 		this.simTime += steps * stepDt;
 
-		RenderTarget main = mc.gameRenderer.mainRenderTarget();
-		VulkanGpuTexture color = (VulkanGpuTexture) main.getColorTexture();
-		VulkanGpuTexture depth = (VulkanGpuTexture) main.getDepthTexture();
-		VulkanGpuTextureView colorView = (VulkanGpuTextureView) main.getColorTextureView();
-		VulkanGpuTextureView depthView = (VulkanGpuTextureView) main.getDepthTextureView();
-		if (active.isEmpty() || color == null || depth == null || colorView == null || depthView == null) {
+		RenderTarget main = mc.getMainRenderTarget();
+		GpuTexture colorTexture = main.getColorTexture();
+		GpuTexture depthTexture = main.getDepthTexture();
+		if (active.isEmpty() || !(colorTexture instanceof GlTexture color) || !(depthTexture instanceof GlTexture depth)) {
 			this.retire(level, merged, drained);
-			Vk.endFrame();
+			Gl.endFrame();
 			this.frameCounter++;
 			return;
 		}
@@ -705,18 +703,29 @@ public final class WaterWorld {
 			this.sandRenderer = new SandRenderer();
 		}
 		if (this.uboRing == null) {
-			this.uboRing = VkBuf.upload((long) UBO_SLOT * MAX_REGIONS * Vk.FRAME_RING, VkBuf.UNIFORM);
-			this.frameView = VkBuf.device(16, 0);
+			this.uboRing = GlBuf.upload((long) UBO_SLOT * MAX_REGIONS * Gl.FRAME_RING, GlBuf.UNIFORM);
+			this.frameView = GlBuf.device(16, 0);
 		}
 		int width = main.width;
 		int height = main.height;
 		this.renderer.prepare(width, height);
 
-		VkCommandBuffer cb = Vk.encoder().allocateAndBeginTransientCommandBuffer();
-		Vk.flushTransitions(cb);
-		Vk.barrier(cb);
+		Cmd cb = Gl.begin();
+		try {
+			this.recordFrame(mc, level, cb, active, steps, stepDt, sandSteps, sandDt, width, height, color.glId(), depth.glId());
+		} finally {
+			Gl.end(cb);
+		}
+		this.retire(level, merged, drained);
+		Gl.endFrame();
+		this.frameCounter++;
+	}
+
+	private void recordFrame(Minecraft mc, ClientLevel level, Cmd cb, List<WaterRegion> active, int steps, float stepDt, int sandSteps, float sandDt,
+		int width, int height, int mainColor, int mainDepth) {
+		Gl.barrier(cb);
 		this.frameView.fill(cb, 0);
-		Vk.barrier(cb);
+		Gl.barrier(cb);
 		boolean readFill = !this.paused;
 		List<WaterRenderer.Body> waterBodies = new ArrayList<>();
 		List<WaterRenderer.Body> sandBodies = new ArrayList<>();
@@ -731,28 +740,22 @@ public final class WaterWorld {
 			if (readFill && r.initialized() && (this.frameCounter + r.id) % SYNC_INTERVAL == 0) {
 				r.fillRequested = true;
 			}
-			int slot = Vk.ringSlot() * MAX_REGIONS + i;
+			int slot = Gl.ringSlot() * MAX_REGIONS + i;
 			List<float[]> removals = r.takeRemovals();
 			int numSources = this.writeGlobals(mc, level, r, slot, sand ? sandDt : stepDt, width, height, removals);
 			Desc ubo = Desc.ubo(this.uboRing, (long) slot * UBO_SLOT, UBO_SIZE);
 			r.record(cb, ubo, regionSteps, numSources, this.frameCounter, this.frameView, removals.size());
 			(r.material == Material.SAND ? sandBodies : waterBodies).add(new WaterRenderer.Body(r, ubo));
 		}
-		Vk.barrier(cb);
+		Gl.barrier(cb);
 		if (!sandBodies.isEmpty()) {
-			this.sandRenderer.record(cb, sandBodies, width, height, colorView.vkImageView(), depthView.vkImageView());
-			Vk.barrier(cb);
+			this.sandRenderer.record(cb, sandBodies, width, height, mainColor, mainDepth);
+			Gl.barrier(cb);
 		}
 		if (!waterBodies.isEmpty()) {
-			this.renderer.record(cb, waterBodies, Desc.ssbo(this.frameView), color.vkImage(), colorView.vkImageView(), depth.vkImage(),
-				depthView.vkImageView());
+			this.renderer.record(cb, waterBodies, Desc.ssbo(this.frameView), mainColor, mainDepth);
 		}
-		Vk.barrier(cb);
-		Vk.check(VK10.vkEndCommandBuffer(cb), "vkEndCommandBuffer");
-		Vk.encoder().execute(cb);
-		this.retire(level, merged, drained);
-		Vk.endFrame();
-		this.frameCounter++;
+		Gl.barrier(cb);
 	}
 
 	private void retire(ClientLevel level, List<WaterRegion> merged, List<WaterRegion> drained) {
@@ -791,9 +794,8 @@ public final class WaterWorld {
 	private int writeGlobals(Minecraft mc, ClientLevel level, WaterRegion r, int slot, float dt, int width, int height, List<float[]> removals) {
 		ByteBuffer b = this.uboRing.mapped();
 		int o = slot * UBO_SLOT;
-		LevelRenderState levelState = mc.gameRenderer.gameRenderState().levelRenderState;
-		CameraRenderState camera = levelState.cameraRenderState;
-		SkyRenderState sky = levelState.skyRenderState;
+		Camera camera = mc.gameRenderer.getMainCamera();
+		float partialTick = camera.getPartialTickTime();
 		int res = r.res;
 		float h = 1.0F / res;
 		int[] box = r.box;
@@ -801,7 +803,7 @@ public final class WaterWorld {
 
 		putInts(b, o, r.nx, r.ny, r.nz, r.numCells);
 		putInts(b, o + 16, r.numU, r.numV, r.numW, r.numFaces);
-		int entityCount = this.writeEntities(mc, r, b, o + 576, levelState.worldPartialTicks);
+		int entityCount = this.writeEntities(mc, r, b, o + 576, partialTick);
 		putInts(b, o + 32, r.fluidCapacity, r.wwCapacity, entityCount, this.frameCounter);
 		int sourceCount = sand ? 0 : this.writeSources(r, b, o + 2112);
 		putInts(b, o + 48, !sand && WaterSettings.whitewater ? 1 : 0, sourceCount, !sand && this.localPlayerFirst ? 1 : 0, WaterSettings.wwCellLimit);
@@ -815,24 +817,25 @@ public final class WaterWorld {
 		putFloats(b, o + 160, WaterSettings.wwSprayDrag, WaterSettings.wwSprayThreshold, WaterSettings.wwBubbleThreshold, WaterSettings.wwMaxPerParticle);
 
 		Matrix4f proj = new Matrix4f(LEVEL_PROJECTION);
-		Matrix4f view = new Matrix4f(camera.viewRotationMatrix);
+		Matrix4f view = new Matrix4f().rotation(camera.rotation().conjugate(new Quaternionf()));
 		proj.get(o + 176, b);
 		view.get(o + 240, b);
 		new Matrix4f(proj).invert().get(o + 304, b);
 		new Matrix4f(view).invert().get(o + 368, b);
 
-		Vec3 cam = camera.pos;
+		Vec3 cam = camera.getPosition();
 		putFloats(b, o + 432, (float) (r.ox - cam.x), (float) (r.oy - cam.y), (float) (r.oz - cam.z), h);
 		putFloats(b, o + 448, width, height, 1.0F / width, 1.0F / height);
 
-		float sunAngle = sky.sunAngle;
+		float sunAngle = level.getSunAngle(partialTick);
 		Vector4f sunWorld = new Vector4f(-Mth.sin(sunAngle), Mth.cos(sunAngle), 0.0F, 0.0F);
 		Vector4f sunView = view.transform(new Vector4f(sunWorld));
-		float sunIntensity = Mth.clamp(sunWorld.y * 4.0F, 0.0F, 1.0F) * (1.0F - sky.rainBrightness * 0.8F);
+		float sunIntensity = Mth.clamp(sunWorld.y * 4.0F, 0.0F, 1.0F) * (1.0F - level.getRainLevel(partialTick) * 0.8F);
 		putFloats(b, o + 464, sunView.x, sunView.y, sunView.z, sunIntensity);
 
-		Vector3f skyColor = sky.skyColor != null ? new Vector3f(sky.skyColor) : new Vector3f(0.5F, 0.7F, 1.0F);
-		Vector4f fog = camera.fogData.color;
+		int sky = level.getSkyColor(cam, partialTick);
+		Vector3f skyColor = new Vector3f((sky >> 16 & 0xFF) / 255.0F, (sky >> 8 & 0xFF) / 255.0F, (sky & 0xFF) / 255.0F);
+		Vector4f fog = FOG_COLOR;
 		float ambient = Mth.clamp(0.15F + 1.2F * (0.3F * skyColor.x + 0.59F * skyColor.y + 0.11F * skyColor.z), 0.12F, 1.0F);
 		putFloats(b, o + 480, skyColor.x, skyColor.y, skyColor.z, ambient);
 		putFloats(b, o + 496, fog.x, fog.y, fog.z, 1.0F);
@@ -1015,7 +1018,7 @@ public final class WaterWorld {
 		ClipRecorder.get().shutdown();
 		this.clear();
 		if (this.renderer != null || this.sandRenderer != null) {
-			Vk.waitIdle();
+			Gl.waitIdle();
 		}
 		if (this.renderer != null) {
 			this.renderer.close();
@@ -1032,6 +1035,7 @@ public final class WaterWorld {
 			this.frameView = null;
 		}
 		WaterRegion.closePrograms();
-		Vk.flushDeferredNow();
+		Gl.flushDeferredNow();
+		Gl.releaseShared();
 	}
 }

@@ -2,7 +2,7 @@ package me.skaffy.client.mixin;
 
 import me.skaffy.fluid.RealisticWaterFluid;
 import net.minecraft.client.Camera;
-import net.minecraft.world.level.Level;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.material.FogType;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -15,12 +15,12 @@ public class CameraMixin {
 	@Shadow
 	private boolean initialized;
 	@Shadow
-	private Level level;
+	private BlockGetter level;
 
 	@Inject(method = "getFluidInCamera", at = @At("HEAD"), cancellable = true)
 	private void realisticWater$noVanillaFog(CallbackInfoReturnable<FogType> cir) {
 		if (this.initialized && this.level != null
-			&& RealisticWaterFluid.isRealistic(this.level.getFluidState(((Camera) (Object) this).blockPosition()))) {
+			&& RealisticWaterFluid.isRealistic(this.level.getFluidState(((Camera) (Object) this).getBlockPosition()))) {
 			cir.setReturnValue(FogType.NONE);
 		}
 	}

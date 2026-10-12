@@ -12,13 +12,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class MinecraftMixin {
 	@ModifyArg(
 		method = "runTick",
-		at = @At(value = "INVOKE", target = "Lnet/minecraft/client/DeltaTracker$Timer;advanceGameTime(J)I")
+		at = @At(value = "INVOKE", target = "Lnet/minecraft/client/DeltaTracker$Timer;advanceTime(JZ)I"),
+		index = 0
 	)
 	private long realisticWater$clipClock(long realMillis) {
 		return ClipRecorder.get().gameClockMillis(realMillis);
 	}
 
-	@Inject(method = "renderFrame", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GameRenderer;render()V", shift = At.Shift.AFTER))
+	@Inject(method = "runTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GameRenderer;render(Lnet/minecraft/client/DeltaTracker;Z)V", shift = At.Shift.AFTER))
 	private void realisticWater$captureClipFrame(boolean advanceGameTime, CallbackInfo ci) {
 		ClipRecorder.get().captureFrame((Minecraft) (Object) this, advanceGameTime);
 	}

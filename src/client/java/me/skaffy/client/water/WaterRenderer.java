@@ -2,19 +2,16 @@ package me.skaffy.client.water;
 
 import java.util.List;
 import java.util.Map;
-import me.skaffy.client.vk.Desc;
-import me.skaffy.client.vk.GraphicsProgram;
-import me.skaffy.client.vk.Program;
-import me.skaffy.client.vk.Sampler;
-import me.skaffy.client.vk.Vk;
-import me.skaffy.client.vk.VkTex;
-import org.lwjgl.system.MemoryStack;
-import org.lwjgl.vulkan.VK10;
-import org.lwjgl.vulkan.VkCommandBuffer;
-import org.lwjgl.vulkan.VkFormatProperties;
+import me.skaffy.client.gl.Desc;
+import me.skaffy.client.gl.GraphicsProgram;
+import me.skaffy.client.gl.Program;
+import me.skaffy.client.gl.Sampler;
+import me.skaffy.client.gl.Gl;
+import me.skaffy.client.gl.GlTex;
+import me.skaffy.client.gl.Cmd;
 
 public final class WaterRenderer implements AutoCloseable {
-	private static final int RGBA32F = VK10.VK_FORMAT_R32G32B32A32_SFLOAT;
+	private static final int RGBA32F = GlTex.RGBA32F;
 
 	private final int thicknessFormat;
 	private final GraphicsProgram meshFront;
@@ -28,20 +25,21 @@ public final class WaterRenderer implements AutoCloseable {
 
 	private int width;
 	private int height;
-	private VkTex sceneDepth;
-	private VkTex fluidZ;
-	private VkTex sceneColor;
-	private VkTex gbuffer;
-	private VkTex thickness;
-	private VkTex foam;
+	private GlTex sceneDepth;
+	private GlTex fluidZ;
+	private GlTex sceneColor;
+	private GlTex gbuffer;
+	private GlTex thickness;
+	private GlTex foam;
 
 	public WaterRenderer() {
-		this.thicknessFormat = blendable(VkTex.R32F) ? VkTex.R32F : VkTex.R16F;
+		// Desktop OpenGL 4.3 drivers blend 32-bit float targets, so the Vulkan format probe is not needed.
+		this.thicknessFormat = GlTex.R32F;
 		int U = Desc.UBO;
 		int S = Desc.SSBO;
 		int T = Desc.TEX;
-		GraphicsProgram.State front = new GraphicsProgram.State(RGBA32F, VkTex.D32, true, true, VK10.VK_COMPARE_OP_GREATER, GraphicsProgram.Blend.NONE);
-		GraphicsProgram.State add = new GraphicsProgram.State(this.thicknessFormat, VK10.VK_FORMAT_UNDEFINED, false, false, VK10.VK_COMPARE_OP_ALWAYS,
+		GraphicsProgram.State front = new GraphicsProgram.State(RGBA32F, GlTex.D32, true, true, GraphicsProgram.LESS, GraphicsProgram.Blend.NONE);
+		GraphicsProgram.State add = new GraphicsProgram.State(this.thicknessFormat, GlTex.NONE, false, false, GraphicsProgram.ALWAYS,
 			GraphicsProgram.Blend.ADD);
 		Map<String, String> droplets = Map.of("DROPLETS", "1", "VIEW_BINDING", "3");
 		this.meshFront = new GraphicsProgram("mesh.vert", "mesh_front.frag", Map.of(), front, U, S, S, S);
@@ -49,18 +47,10 @@ public final class WaterRenderer implements AutoCloseable {
 		this.meshThickness = new GraphicsProgram("mesh.vert", "mesh_thickness.frag", Map.of(), add, U, S, S, S, T);
 		this.dropletThickness = new GraphicsProgram("particle.vert", "droplet_thickness.frag", droplets, add, U, S, S, S, T);
 		this.whitewaterProgram = new GraphicsProgram("particle.vert", "whitewater.frag", Map.of("VIEW_BINDING", "4"),
-			new GraphicsProgram.State(VkTex.RGBA16F, VK10.VK_FORMAT_UNDEFINED, false, false, VK10.VK_COMPARE_OP_ALWAYS, GraphicsProgram.Blend.ADD),
+			new GraphicsProgram.State(GlTex.RGBA16F, GlTex.NONE, false, false, GraphicsProgram.ALWAYS, GraphicsProgram.Blend.ADD),
 			U, S, T, T, S);
 		this.compositeProgram = new GraphicsProgram("fullscreen.vert", "composite.frag", Map.of(),
-			new GraphicsProgram.State(VkTex.RGBA8, VkTex.D32, true, true, VK10.VK_COMPARE_OP_ALWAYS, GraphicsProgram.Blend.NONE), U, T, T, T, T, T, S);
-	}
-
-	private static boolean blendable(int format) {
-		try (MemoryStack stack = MemoryStack.stackPush()) {
-			VkFormatProperties props = VkFormatProperties.calloc(stack);
-			VK10.vkGetPhysicalDeviceFormatProperties(Vk.vk().getPhysicalDevice(), format, props);
-			return (props.optimalTilingFeatures() & VK10.VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT) != 0;
-		}
+			new GraphicsProgram.State(GlTex.RGBA8, GlTex.D32, true, true, GraphicsProgram.ALWAYS, GraphicsProgram.Blend.NONE), U, T, T, T, T, T, S);
 	}
 
 	private void ensureTargets(int w, int h) {
@@ -70,18 +60,18 @@ public final class WaterRenderer implements AutoCloseable {
 		this.releaseTargets();
 		this.width = w;
 		this.height = h;
-		this.sceneDepth = new VkTex(VkTex.D32, w, h, VkTex.COPY_DST | VkTex.SAMPLED);
-		this.fluidZ = new VkTex(VkTex.D32, w, h, VkTex.COPY_DST | VkTex.DEPTH);
-		this.sceneColor = new VkTex(VkTex.RGBA8, w, h, VkTex.COPY_DST | VkTex.SAMPLED);
-		this.gbuffer = new VkTex(RGBA32F, w, h, VkTex.COLOR | VkTex.SAMPLED);
-		this.thickness = new VkTex(this.thicknessFormat, w, h, VkTex.COLOR | VkTex.SAMPLED);
-		this.foam = new VkTex(VkTex.RGBA16F, w, h, VkTex.COLOR | VkTex.SAMPLED);
+		this.sceneDepth = new GlTex(GlTex.D32, w, h);
+		this.fluidZ = new GlTex(GlTex.D32, w, h);
+		this.sceneColor = new GlTex(GlTex.RGBA8, w, h);
+		this.gbuffer = new GlTex(RGBA32F, w, h);
+		this.thickness = new GlTex(this.thicknessFormat, w, h);
+		this.foam = new GlTex(GlTex.RGBA16F, w, h);
 	}
 
 	private void releaseTargets() {
-		for (VkTex t : new VkTex[]{this.sceneDepth, this.fluidZ, this.sceneColor, this.gbuffer, this.thickness, this.foam}) {
+		for (GlTex t : new GlTex[]{this.sceneDepth, this.fluidZ, this.sceneColor, this.gbuffer, this.thickness, this.foam}) {
 			if (t != null) {
-				Vk.destroyLater(t);
+				Gl.destroyLater(t);
 			}
 		}
 		this.sceneDepth = null;
@@ -94,8 +84,7 @@ public final class WaterRenderer implements AutoCloseable {
 	public record Body(WaterRegion region, Desc ubo) {
 	}
 
-	public void record(VkCommandBuffer cb, List<Body> bodies, Desc view, long mainColorImage, long mainColorView, long mainDepthImage,
-		long mainDepthView) {
+	public void record(Cmd cb, List<Body> bodies, Desc view, int mainColor, int mainDepth) {
 		int w = this.width;
 		int h = this.height;
 		for (Body body : bodies) {
@@ -104,13 +93,13 @@ public final class WaterRenderer implements AutoCloseable {
 				WaterSettings.sheetFill);
 		}
 
-		VkTex.copy(cb, mainDepthImage, this.sceneDepth.image, VK10.VK_IMAGE_ASPECT_DEPTH_BIT, w, h);
-		VkTex.copy(cb, mainDepthImage, this.fluidZ.image, VK10.VK_IMAGE_ASPECT_DEPTH_BIT, w, h);
-		VkTex.copy(cb, mainColorImage, this.sceneColor.image, VK10.VK_IMAGE_ASPECT_COLOR_BIT, w, h);
-		Vk.barrier(cb);
-		Desc depthTex = Desc.tex(this.sceneDepth, this.nearest.handle);
+		GlTex.copy(cb, mainDepth, this.sceneDepth.id, w, h);
+		GlTex.copy(cb, mainDepth, this.fluidZ.id, w, h);
+		GlTex.copy(cb, mainColor, this.sceneColor.id, w, h);
+		Gl.barrier(cb);
+		Desc depthTex = Desc.tex(this.sceneDepth, this.nearest);
 
-		GraphicsProgram.begin(cb, w, h, this.gbuffer.view, new float[]{0, 0, 0, 0}, this.fluidZ.view);
+		GraphicsProgram.begin(cb, w, h, this.gbuffer.id, new float[]{0, 0, 0, 0}, this.fluidZ.id);
 		for (Body body : bodies) {
 			WaterRegion r = body.region();
 			float radius = WaterSettings.particleRadius / r.res;
@@ -122,7 +111,7 @@ public final class WaterRenderer implements AutoCloseable {
 		}
 		GraphicsProgram.end(cb);
 
-		GraphicsProgram.begin(cb, w, h, this.thickness.view, new float[]{0, 0, 0, 0}, 0L);
+		GraphicsProgram.begin(cb, w, h, this.thickness.id, new float[]{0, 0, 0, 0}, 0);
 		for (Body body : bodies) {
 			WaterRegion r = body.region();
 			float radius = WaterSettings.particleRadius / r.res;
@@ -133,28 +122,28 @@ public final class WaterRenderer implements AutoCloseable {
 			this.dropletThickness.drawIndirect(cb, r.args, WaterRegion.ARGS_FLUID_DRAW);
 		}
 		GraphicsProgram.end(cb);
-		Vk.barrier(cb);
+		Gl.barrier(cb);
 
-		GraphicsProgram.begin(cb, w, h, this.foam.view, new float[]{0, 0, 0, 0}, 0L);
+		GraphicsProgram.begin(cb, w, h, this.foam.id, new float[]{0, 0, 0, 0}, 0);
 		if (WaterSettings.whitewater) {
 			for (Body body : bodies) {
 				WaterRegion r = body.region();
-				this.whitewaterProgram.bind(cb, body.ubo(), Desc.ssbo(r.currentWhitewater()), depthTex, Desc.tex(this.gbuffer, this.nearest.handle), view);
+				this.whitewaterProgram.bind(cb, body.ubo(), Desc.ssbo(r.currentWhitewater()), depthTex, Desc.tex(this.gbuffer, this.nearest), view);
 				this.whitewaterProgram.push(cb, Program.f(WaterSettings.wwRadius), Program.f(0.5F), Program.f(0.3F), Program.f(WaterSettings.wwMaxPixels),
 					Program.f(WaterSettings.foamSize));
 				this.whitewaterProgram.drawIndirect(cb, r.args, WaterRegion.ARGS_WW_DRAW);
 			}
 		}
 		GraphicsProgram.end(cb);
-		Vk.barrier(cb);
+		Gl.barrier(cb);
 
-		GraphicsProgram.begin(cb, w, h, mainColorView, null, mainDepthView);
+		GraphicsProgram.begin(cb, w, h, mainColor, null, mainDepth);
 		this.compositeProgram.bind(cb, bodies.getFirst().ubo(),
-			Desc.tex(this.gbuffer, this.nearest.handle),
-			Desc.tex(this.thickness, this.linear.handle),
-			Desc.tex(this.sceneColor, this.linear.handle),
+			Desc.tex(this.gbuffer, this.nearest),
+			Desc.tex(this.thickness, this.linear),
+			Desc.tex(this.sceneColor, this.linear),
 			depthTex,
-			Desc.tex(this.foam, this.linear.handle),
+			Desc.tex(this.foam, this.linear),
 			view);
 		this.compositeProgram.draw(cb, 3, 1);
 		GraphicsProgram.end(cb);
