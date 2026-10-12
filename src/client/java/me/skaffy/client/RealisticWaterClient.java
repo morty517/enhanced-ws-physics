@@ -28,6 +28,7 @@ public class RealisticWaterClient implements ClientModInitializer {
 		ClientChunkEvents.CHUNK_UNLOAD.register(water::onChunkUnload);
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> water.clear());
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> water.shutdown());
+		SelfTest.init();
 	}
 
 	private static void registerInvisibleFluid() {

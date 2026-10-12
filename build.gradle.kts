@@ -15,6 +15,19 @@ loom {
 			sourceSet(sourceSets.getByName("client"))
 		}
 	}
+
+	runs {
+		// Headless smoke test: ./gradlew runSelftest (see SelfTest.java). Not part of the built mod's behaviour.
+		register("selftest") {
+			client()
+			name("Self Test")
+			runDir("run-selftest")
+			vmArg("-Drealisticwater.selftest=true")
+			// extra -D flags for the test, e.g. -PselftestArgs="-Drealisticwater.selftest.resolution=6 -Drealisticwater.selftest.clip=true"
+			providers.gradleProperty("selftestArgs").orNull?.split(" ")?.filter { it.isNotBlank() }?.forEach { vmArg(it) }
+			programArgs("--width", "640", "--height", "360")
+		}
+	}
 }
 
 dependencies {

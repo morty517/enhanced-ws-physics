@@ -1025,6 +1025,14 @@ public final class WaterWorld {
 			this.lastSandDt * 1000.0F, this.sources.size(), isHost() ? "(syncing blocks)" : "(not host: blocks follow the server)");
 	}
 
+	public int framesRendered() {
+		return this.frameCounter;
+	}
+
+	public boolean failed() {
+		return this.failed;
+	}
+
 	public void clear() {
 		this.closeRegions();
 		this.sources.clear();
