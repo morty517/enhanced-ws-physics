@@ -2,7 +2,7 @@ package me.skaffy.client.vk;
 
 import java.nio.ByteBuffer;
 import java.nio.LongBuffer;
-import org.jspecify.annotations.Nullable;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;

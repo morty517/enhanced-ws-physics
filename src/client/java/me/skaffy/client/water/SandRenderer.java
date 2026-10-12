@@ -13,12 +13,12 @@ import me.skaffy.client.vk.Vk;
 import me.skaffy.client.vk.VkBuf;
 import me.skaffy.client.vk.VkTex;
 import net.minecraft.client.Minecraft;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkCommandBuffer;
 
 final class SandRenderer implements AutoCloseable {
-	private static final Identifier SAND_TEXTURE = Identifier.withDefaultNamespace("textures/block/sand.png");
+	private static final ResourceLocation SAND_TEXTURE = ResourceLocation.withDefaultNamespace("textures/block/sand.png");
 
 	private final GraphicsProgram grains;
 	private final ComputeProgram cull;

@@ -3,7 +3,7 @@
 	"id": "realistic-water",
 	"version": "${version}",
 	"name": "Realistic Water",
-	"description": "Ultra realistic water and sand in Minecraft!",
+	"description": "Ultra realistic water and sand in Minecraft! Unofficial OpenGL port for 1.21.8 of Skaffy's Realistic Water (https://github.com/sskaffy/Realistic-Water).",
 	"authors": [
 		"Skaffy"
 	],
@@ -29,8 +29,8 @@
 	],
 	"depends": {
 		"fabricloader": ">=0.19.5",
-		"minecraft": "~26.3",
-		"java": ">=25",
+		"minecraft": "~1.21.8",
+		"java": ">=21",
 		"fabric-api": "*"
 	}
 }

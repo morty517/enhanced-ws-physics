@@ -3,7 +3,7 @@ package me.skaffy;
 import me.skaffy.block.RealisticSandBlock;
 import me.skaffy.block.RealisticWaterBlock;
 import me.skaffy.fluid.RealisticWaterFluid;
-import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
+import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -33,9 +33,9 @@ public final class ModContent {
 		BlockBehaviour.Properties.of()
 			.mapColor(MapColor.WATER)
 			.replaceable()
-			.noCollision()
+			.noCollission()
 			.strength(100.0F)
-			.pushReaction(PushReaction.POPPED)
+			.pushReaction(PushReaction.DESTROY)
 			.noLootTable()
 			.liquid()
 			.sound(SoundType.EMPTY)
@@ -54,9 +54,9 @@ public final class ModContent {
 			.strength(0.5F)
 			.sound(SoundType.SAND)
 			.noOcclusion()
-			.pushReaction(PushReaction.POPPED)
+			.pushReaction(PushReaction.DESTROY)
 			.isSuffocating((state, level, pos) -> false)
-			.isViewBlocking((state, level, pos, box) -> false)
+			.isViewBlocking((state, level, pos) -> false)
 			.setId(REALISTIC_SAND_KEY)
 	));
 
@@ -73,9 +73,9 @@ public final class ModContent {
 	}
 
 	static void init() {
-		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.TOOLS_AND_UTILITIES)
-			.register(output -> output.insertAfter(Items.WATER_BUCKET, REALISTIC_WATER_BUCKET));
-		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.NATURAL_BLOCKS)
-			.register(output -> output.insertAfter(Items.SAND, REALISTIC_SAND_ITEM));
+		ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.TOOLS_AND_UTILITIES)
+			.register(entries -> entries.addAfter(Items.WATER_BUCKET, REALISTIC_WATER_BUCKET));
+		ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.NATURAL_BLOCKS)
+			.register(entries -> entries.addAfter(Items.SAND, REALISTIC_SAND_ITEM));
 	}
 }

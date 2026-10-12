@@ -22,7 +22,7 @@ import me.skaffy.RealisticWater;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import org.jspecify.annotations.Nullable;
+import org.jetbrains.annotations.Nullable;
 
 public final class ClipRecorder {
 	private static final ClipRecorder INSTANCE = new ClipRecorder();

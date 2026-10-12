@@ -7,7 +7,7 @@ import net.minecraft.network.chat.Component;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
@@ -21,9 +21,9 @@ public class RealisticWater implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		ModContent.init();
-		PayloadTypeRegistry.serverboundPlay().register(WaterSyncPayload.TYPE, WaterSyncPayload.CODEC);
-		PayloadTypeRegistry.serverboundPlay().register(SandSyncPayload.TYPE, SandSyncPayload.CODEC);
-		PayloadTypeRegistry.serverboundPlay().register(RemoveAllWaterPayload.TYPE, RemoveAllWaterPayload.CODEC);
+		PayloadTypeRegistry.playC2S().register(WaterSyncPayload.TYPE, WaterSyncPayload.CODEC);
+		PayloadTypeRegistry.playC2S().register(SandSyncPayload.TYPE, SandSyncPayload.CODEC);
+		PayloadTypeRegistry.playC2S().register(RemoveAllWaterPayload.TYPE, RemoveAllWaterPayload.CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(WaterSyncPayload.TYPE, (payload, context) -> {
 			if (isAuthority(context.server(), context.player())) {
 				context.server().execute(() -> payload.apply(context.player()));
@@ -46,10 +46,10 @@ public class RealisticWater implements ModInitializer {
 	}
 
 	private static boolean isAuthority(MinecraftServer server, ServerPlayer player) {
-		return server.isSingleplayerOwner(player.nameAndId()) || server.getPlayerList().isOp(player.nameAndId());
+		return server.isSingleplayerOwner(player.getGameProfile()) || server.getPlayerList().isOp(player.getGameProfile());
 	}
 
-	public static Identifier id(String path) {
-		return Identifier.fromNamespaceAndPath(MOD_ID, path);
+	public static ResourceLocation id(String path) {
+		return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);
 	}
 }

@@ -17,7 +17,7 @@ import net.minecraft.client.renderer.block.FluidModel;
 import net.minecraft.client.renderer.block.FluidRenderer;
 import net.minecraft.client.resources.model.sprite.Material;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 
@@ -36,9 +36,9 @@ public class RealisticWaterClient implements ClientModInitializer {
 
 	private static void registerInvisibleFluid() {
 		FluidModel.Unbaked waterModel = new FluidModel.Unbaked(
-			new Material(Identifier.withDefaultNamespace("block/water_still")),
-			new Material(Identifier.withDefaultNamespace("block/water_flow")),
-			new Material(Identifier.withDefaultNamespace("block/water_overlay")),
+			new Material(ResourceLocation.withDefaultNamespace("block/water_still")),
+			new Material(ResourceLocation.withDefaultNamespace("block/water_flow")),
+			new Material(ResourceLocation.withDefaultNamespace("block/water_overlay")),
 			BlockTintSources.water()
 		);
 		FluidRenderHandler invisible = new FluidRenderHandler() {
