@@ -7,5 +7,8 @@
   "block.realistic-water.realistic_red_sand": "Реалистичный красный песок",
   "block.realistic-water.realistic_gravel": "Реалистичный гравий",
   "block.realistic-water.realistic_suspicious_milk": "Подозрительное молоко",
-  "item.realistic-water.realistic_suspicious_milk_bucket": "Ведро подозрительного молока"
+  "item.realistic-water.realistic_suspicious_milk_bucket": "Ведро подозрительного молока",
+  "block.realistic-water.realistic_lava": "Реалистичная лава",
+  "item.realistic-water.realistic_lava_bucket": "Ведро реалистичной лавы",
+  "block.realistic-water.realistic_snow": "Реалистичный снег"
 }

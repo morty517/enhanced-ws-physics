@@ -143,6 +143,36 @@ public final class WaterSettings {
 	public static int gravelGrainsPerParticle = 6;
 	public static float gravelBrightness = 1.0F;
 
+	// Snow: cohesive and steep, holds walls and clumps; light, so water pushes it around easily.
+	public static float snowFrictionAngle = 35.0F;
+	public static float snowCohesion = 0.06F;
+	public static float snowGrainSize = 0.012F;
+	public static int snowGrainsPerParticle = 24;
+	public static float snowBrightness = 1.0F;
+	public static float snowWaterDrag = 9.0F;
+
+	// Lava: its own simulation. Opaque, glowing, lazy and sticky; solidifies where it touches water.
+	public static float lavaScatterR = 1.0F;
+	public static float lavaScatterG = 0.36F;
+	public static float lavaScatterB = 0.06F;
+	public static float lavaScatterDensity = 60.0F;
+	public static float lavaAbsorb = 60.0F;
+	/** Brightness of the glow, independent of daylight. */
+	public static float lavaEmission = 1.7F;
+	/** How much of the surface is covered by dark cooling crust (0..1). */
+	public static float lavaCrust = 0.45F;
+	public static float lavaFlipRatio = 0.3F;
+	/** How fast lava loses sideways speed (1/s): higher = thicker, slower lava. */
+	public static float lavaViscosity = 10.0F;
+	public static float lavaFilmFriction = 400.0F;
+	public static float lavaStrandedTime = 60.0F;
+	/** Chance per step that a lava particle touching water solidifies / a water particle touching lava boils away. */
+	public static float lavaSolidifyRate = 0.06F;
+	public static float lavaBoilRate = 0.3F;
+	/** Fraction of a block's lava that has to solidify before the block turns to stone (obsidian when it is most of it). */
+	public static float lavaSolidifyBlock = 0.12F;
+	public static float lavaObsidianFraction = 0.45F;
+
 	// Coupling between fluids and granular materials.
 	public static boolean coupling = true;
 	/** Fraction of a fully packed cell's grains above which a fluid cell counts as solid (moving with the grains). */

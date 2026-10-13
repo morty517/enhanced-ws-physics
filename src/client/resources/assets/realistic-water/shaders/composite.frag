@@ -112,7 +112,33 @@ vec3 sunSpecular(vec3 n, vec3 V, float footprint) {
     return vec3(1.0, 0.96, 0.88) * min(D * Vis * F * NoL * G.shadeB.x, 30.0) * G.sunDir.w;
 }
 
-vec3 shadeAboveWater(vec2 uv, vec3 n, float fd, float sceneDist, float ambient, vec3 absorb, vec4 scatter) {
+// Lava: drifting crust plates (dark) with glowing cracks between them; 1 = crust.
+float lavaCrust(vec2 p, float t, float coverage) {
+    vec2 q = p * 2.6 + vec2(0.05, 0.03) * t;
+    ivec2 cell = ivec2(floor(q));
+    float f1 = 9.0;
+    float f2 = 9.0;
+    for (int k = 0; k < 9; k++) {
+        ivec2 c = cell + ivec2(k % 3 - 1, k / 3 - 1);
+        uint s = hash(uint(c.x) * 73856093u ^ uint(c.y) * 19349663u ^ 0x5bd1e995u);
+        float phase = rand(s) * 6.2831853;
+        vec2 feature = vec2(c) + 0.5 + 0.35 * vec2(sin(t * 0.15 + phase), cos(t * 0.11 + phase * 1.7));
+        float d = length(q - feature);
+        if (d < f1) {
+            f2 = f1;
+            f1 = d;
+        } else if (d < f2) {
+            f2 = d;
+        }
+    }
+    // Narrow cracks, and plates that are only partly cooled (noise per plate) so the surface isn't a uniform tiling.
+    float plate = smoothstep(0.02, 0.12, f2 - f1);
+    uint ps = hash(uint(floor(q.x * 0.5)) * 2654435761u ^ uint(floor(q.y * 0.5)) * 40503u);
+    float cool = mix(0.55, 1.0, rand(ps));
+    return clamp(plate * cool * coverage * 1.7, 0.0, 1.0);
+}
+
+vec3 shadeAboveWater(vec2 uv, vec3 n, float fd, float sceneDist, float ambient, vec3 absorb, vec4 scatter, vec4 glow) {
     vec3 P = viewPosAt(uv, fd);
     vec3 V = normalize(-P);
     n = dot(n, V) < 0.0 ? -n : n;
@@ -138,7 +164,17 @@ vec3 shadeAboveWater(vec2 uv, vec3 n, float fd, float sceneDist, float ambient, 
     float wet = G.shadeB.y * smoothstep(0.0, 0.03, path);
     under = pow(max(under, vec3(0.0)), vec3(1.0 + wet)) * (1.0 - 0.15 * wet);
     vec3 transmitted = under * exp(-absorb * path);
-    vec3 scattered = scatter.rgb * ambient * (1.0 - exp(-scatter.w * path));
+    float light = ambient;
+    float shine = 1.0;
+    if (glow.x > 0.0) {
+        // Glowing fluid (lava): lit by itself, cooled crust drifting on top, mostly matte.
+        vec3 world = G.misc.yzw + (G.invView * vec4(P, 0.0)).xyz;
+        float crust = lavaCrust(world.xz, G.simB.z, glow.y);
+        scatter.rgb = mix(scatter.rgb, vec3(0.16, 0.07, 0.05), crust);
+        light = mix(glow.x, ambient * 0.7, crust);
+        shine = mix(0.35, 0.15, crust);
+    }
+    vec3 scattered = scatter.rgb * light * (1.0 - exp(-scatter.w * path));
     vec3 water = transmitted + scattered;
 
     vec3 Rv = reflect(-V, n);
@@ -146,8 +182,8 @@ vec3 shadeAboveWater(vec2 uv, vec3 n, float fd, float sceneDist, float ambient, 
     float hit;
     vec3 ssr = traceReflection(P + n * 0.05, Rv, hit);
     vec3 reflection = mix(skyColor(Rw), ssr, hit);
-    float F = 0.02 + 0.98 * pow(1.0 - clamp(dot(n, V), 0.0, 1.0), 5.0);
-    return mix(water, reflection, F) + sunSpecular(n, V, footprint);
+    float F = (0.02 + 0.98 * pow(1.0 - clamp(dot(n, V), 0.0, 1.0), 5.0)) * shine;
+    return mix(water, reflection, F) + sunSpecular(n, V, footprint) * shine;
 }
 
 float foamLace(vec2 p, float coverage, float footprint) {
@@ -225,7 +261,8 @@ void main() {
         float fog = scatter.w * G.misc.x;
         color = color * exp(-absorb * visible * G.misc.x) + deep * (1.0 - exp(-fog * visible));
     } else if (hasFluid) {
-        color = shadeAboveWater(uv, n, fd, sceneDist, ambient, mixFluidA(surfaceMix).rgb, mixFluidB(surfaceMix));
+        vec4 fc = mixFluidC(surfaceMix);
+        color = shadeAboveWater(uv, n, fd, sceneDist, ambient, mixFluidA(surfaceMix).rgb, mixFluidB(surfaceMix), vec4(fc.z, G.mixInfo.w, 0.0, 0.0));
         vec4 clip = G.proj * vec4(viewPosAt(uv, fd), 1.0);
         outDepth = clip.z / clip.w * 0.5 + 0.5;
     }

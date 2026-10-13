@@ -20,7 +20,11 @@ public enum Material {
 	RED_SAND(Kind.GRANULAR, "red_sand"),
 	GRAVEL(Kind.GRANULAR, "gravel"),
 	/** Very suspicious. Same solver as water, but lazier (low FLIP ratio, sticky film) and milky-translucent. */
-	SUSPICIOUS_MILK(Kind.FLUID, "suspicious_milk");
+	SUSPICIOUS_MILK(Kind.FLUID, "suspicious_milk"),
+	/** Cohesive, packs and holds steep walls. */
+	SNOW(Kind.GRANULAR, "snow"),
+	/** Its own simulation (doesn't mix with water): glows, flows lazily, turns into stone where it meets water. */
+	LAVA(Kind.FLUID, "lava");
 
 	public enum Kind { FLUID, GRANULAR }
 
@@ -48,9 +52,12 @@ public enum Material {
 		return this.granular() ? 1.0F : 0.0F;
 	}
 
-	/** Materials of one kind share a simulation; this is the region key (water for fluids, sand for granular materials). */
+	/**
+	 * Materials of one group share a simulation and can mix or push each other; this is the group's region key: water for the
+	 * water-like fluids, lava for lava, sand for every granular material.
+	 */
 	public Material base() {
-		return this.fluid() ? WATER : SAND;
+		return this == LAVA ? LAVA : this.fluid() ? WATER : SAND;
 	}
 
 	/**
@@ -59,21 +66,23 @@ public enum Material {
 	 */
 	public int slot() {
 		return switch (this) {
-			case WATER, SAND -> 0;
+			case WATER, SAND, LAVA -> 0;
 			case MILK, RED_SAND -> 1;
 			case SUSPICIOUS_MILK, GRAVEL -> 2;
+			case SNOW -> 3;
 		};
 	}
 
-	public static final int SLOTS = 3;
+	public static final int SLOTS = 4;
 
-	public static Material bySlot(Kind kind, int slot) {
+	/** The material of {@code base}'s group in {@code slot}, or {@code base} itself when the group has no such slot. */
+	public static Material bySlot(Material base, int slot) {
 		for (Material m : VALUES) {
-			if (m.kind == kind && m.slot() == slot) {
+			if (m.base() == base && m.slot() == slot) {
 				return m;
 			}
 		}
-		return kind == Kind.FLUID ? WATER : SAND;
+		return base;
 	}
 
 	public byte networkId() {

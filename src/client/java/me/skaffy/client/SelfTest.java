@@ -120,7 +120,8 @@ public final class SelfTest {
 						dropAt(mc, Material.WATER, size, pitCenter(mc).add(0.0, 2.5, 0.0));
 					} else if (MIX) {
 						drop(mc, Material.WATER, size, -1.05);
-						drop(mc, Boolean.getBoolean("realisticwater.selftest.sus") ? Material.SUSPICIOUS_MILK : Material.MILK, size, 1.05);
+						Material second = Material.byId(System.getProperty("realisticwater.selftest.second", "milk"));
+							drop(mc, second != null ? second : Material.MILK, size, 1.05);
 					} else {
 						drop(mc, Material.WATER, size, -2.5);
 						drop(mc, Boolean.getBoolean("realisticwater.selftest.sus") ? Material.SUSPICIOUS_MILK : Material.MILK, size, 2.5);
@@ -161,6 +162,7 @@ public final class SelfTest {
 						drop(mc, Material.SAND, 1.5, 0.8, 0.0);
 						drop(mc, Material.RED_SAND, 1.5, -0.8, 0.0);
 						drop(mc, Material.GRAVEL, 1.5, 0.0, 2.5);
+						drop(mc, Material.SNOW, 1.5, -2.6, 0.5);
 					} else {
 						drop(mc, Material.SAND, 1.5, 3.5);
 						drop(mc, Material.RED_SAND, 1.5, 0.0);

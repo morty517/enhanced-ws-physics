@@ -175,8 +175,15 @@ bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out float m
         vec3 uOld = sampleVelOld(x);
         v = mix(uNew, v + (uNew - uOld), mixFluidA(mat).w);
         dx = DT * sampleVel(x + 0.5 * DT * uNew);
-        if (!waterFilm(x, mixFluidC(mat), v, dx, tag)) {
+        vec4 film = mixFluidC(mat);
+        if (!waterFilm(x, film, v, dx, tag)) {
             return false;
+        }
+        if (film.w > 0.0) {
+            // Thick fluids (lava): bleed off sideways motion so they creep and pile up instead of running like water.
+            float damp = exp(-film.w * DT);
+            v.xz *= damp;
+            dx.xz *= damp;
         }
         // Mixing: relax towards the cell's mean mixture. Codes are quantised to 1/1023, so round stochastically or slow
         // mixing would never move a particle off its code.

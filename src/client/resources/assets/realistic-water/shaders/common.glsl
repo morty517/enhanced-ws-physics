@@ -59,10 +59,10 @@ layout(std140, binding = 0) uniform Globals {
     // Per-material tables, indexed by Material.slot(): fluids mix slots per particle, grains carry one slot each.
     vec4 fluidA[4]; // absorb rgb, FLIP ratio for this step
     vec4 fluidB[4]; // scatter rgb, scatter density
-    vec4 fluidC[4]; // film friction, stranded time
+    vec4 fluidC[4]; // film friction, stranded time, glow (emission), viscous damping (1/s, horizontal)
     vec4 grainA[4]; // friction alpha, cohesion, grain radius, brightness
     vec4 grainB[4]; // water drag rate, grains drawn per particle
-    vec4 mixInfo;   // x = fluid mixing rate (1/s)
+    vec4 mixInfo;   // x = fluid mixing rate (1/s), y = uniform slot or -1, z = 1 for lava (solidifies), w = lava crust coverage
 } G;
 
 bool isSand() {

@@ -71,7 +71,7 @@ public abstract class RealisticWaterFluid extends FlowingFluid {
 
 	@Override
 	public @Nullable ParticleOptions getDripParticle() {
-		return ParticleTypes.DRIPPING_WATER;
+		return this.material == Material.LAVA ? ParticleTypes.DRIPPING_LAVA : ParticleTypes.DRIPPING_WATER;
 	}
 
 	@Override
@@ -87,7 +87,12 @@ public abstract class RealisticWaterFluid extends FlowingFluid {
 
 	@Override
 	protected void entityInside(final Level level, final BlockPos pos, final Entity entity, final InsideBlockEffectApplier effectApplier) {
-		effectApplier.apply(InsideBlockEffectType.EXTINGUISH);
+		if (this.material == Material.LAVA) {
+			effectApplier.apply(InsideBlockEffectType.LAVA_IGNITE);
+			effectApplier.runAfter(InsideBlockEffectType.LAVA_IGNITE, Entity::lavaHurt);
+		} else {
+			effectApplier.apply(InsideBlockEffectType.EXTINGUISH);
+		}
 	}
 
 	@Override

@@ -20,7 +20,7 @@ COMPUTE = [
     "mpm_g2p.comp", "fine_clear.comp", "blur.comp", "nets_vertices.comp", "nets_quads.comp", "mesh_args.comp",
     "sheet_fill.comp", "zb_splat.comp", "zb_field.comp", "mg_flags0.comp", "mg_coarsen.comp", "mg_smooth.comp",
     "mg_restrict.comp", "mg_prolong.comp", "cg_init.comp", "cg_apply.comp", "cg_dot.comp", "cg_reduce.comp",
-    "cg_update.comp", "cg_direction.comp", "mg_coarse.comp", "grain_cull.comp", "couple_splat.comp",
+    "cg_update.comp", "cg_direction.comp", "mg_coarse.comp", "grain_cull.comp", "couple_splat.comp", "react.comp",
 ]
 PROGRAMS = [(c, {}) for c in COMPUTE] + [("blockfill.comp", {"MPM": "1"})]
 DROPLETS = {"DROPLETS": "1", "VIEW_BINDING": "3"}

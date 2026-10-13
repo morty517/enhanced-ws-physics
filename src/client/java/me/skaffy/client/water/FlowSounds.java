@@ -22,8 +22,9 @@ final class FlowSounds {
 	private final RandomSource random = RandomSource.create();
 	private int tick;
 
-	void onFill(Material.Kind kind, WaterRegion.Fill f, Vec3 listener) {
-		boolean water = kind == Material.Kind.FLUID;
+	void onFill(Material base, WaterRegion.Fill f, Vec3 listener) {
+		boolean water = base.fluid();
+		boolean lava = base == Material.LAVA;
 		if (water ? !WaterSettings.flowSounds : !WaterSettings.sandSounds) {
 			return;
 		}
@@ -49,7 +50,7 @@ final class FlowSounds {
 						continue;
 					}
 					candidates.add(new int[]{f.x() + x, f.y() + y, f.z() + z});
-					grainSounds.add(Material.bySlot(kind, f.slot(i)) == Material.GRAVEL ? SoundType.GRAVEL : SoundType.SAND);
+					grainSounds.add(switch (Material.bySlot(base, f.slot(i))) { case GRAVEL -> SoundType.GRAVEL; case SNOW -> SoundType.SNOW; default -> SoundType.SAND; });
 					speeds.add(speed);
 					weight += Math.min(speed / 1.5F, 2.0F);
 					if (speed >= fast) {
@@ -69,7 +70,12 @@ final class FlowSounds {
 			float speed = speeds.get(pick);
 			float loud = Math.min(speed / 1.5F, 1.0F);
 			if (water) {
-				this.schedule(b, SoundEvents.WATER_AMBIENT, (0.45F + 0.45F * loud) * volumeScale, this.random.nextFloat() + 0.5F);
+				if (lava) {
+					this.schedule(b, this.random.nextInt(3) == 0 ? SoundEvents.LAVA_POP : SoundEvents.LAVA_AMBIENT, (0.3F + 0.4F * loud) * volumeScale,
+						0.8F + this.random.nextFloat() * 0.4F);
+				} else {
+					this.schedule(b, SoundEvents.WATER_AMBIENT, (0.45F + 0.45F * loud) * volumeScale, this.random.nextFloat() + 0.5F);
+				}
 			} else {
 				SoundType grains = grainSounds.get(pick);
 				SoundEvent sound = this.random.nextBoolean() ? grains.getStepSound() : grains.getHitSound();
@@ -81,7 +87,7 @@ final class FlowSounds {
 			int pick = this.random.nextInt(candidates.size());
 			int[] b = candidates.get(pick);
 			if (water) {
-				this.schedule(b, SoundEvents.GENERIC_SPLASH, 0.25F * volumeScale, 0.8F + this.random.nextFloat() * 0.4F);
+				this.schedule(b, lava ? SoundEvents.LAVA_POP : SoundEvents.GENERIC_SPLASH, 0.25F * volumeScale, 0.8F + this.random.nextFloat() * 0.4F);
 			} else {
 				this.schedule(b, grainSounds.get(pick).getFallSound(), 0.35F * volumeScale, 0.8F + this.random.nextFloat() * 0.3F);
 			}

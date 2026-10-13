@@ -53,6 +53,11 @@ Java 21 is enough to run Gradle (Loom 1.14).
 - Fluids: water, milk, suspicious milk. They share one FLIP simulation per area; each particle carries its mixture
   (stored in `vel.w`), so fluids push each other, blend over time (`/water set fluidMixRate <1/s>`, 0 keeps them apart)
   and are shaded per pixel from the mixture at the surface. Blocks are written as whichever fluid dominates them.
-- Granular: sand, red sand, gravel. They share one MPM simulation; each grain keeps its own friction, cohesion, look and
+- Lava: its own glowing, viscous simulation (`lavaViscosity`, `lavaCrust`, `lavaEmission`). Where lava and water overlap
+  they react (`react.comp`): lava solidifies and the host turns blocks with enough of it into cobblestone or obsidian, water
+  boils off as steam. Synced lava blocks give light 15 and burn like vanilla lava.
+- Granular: sand, red sand, gravel, snow (cohesive). They share one MPM simulation; each grain keeps its own friction, cohesion, look and
   water drag, so piles of different materials stack and push each other.
 - Granular materials and fluids are coupled (grains displace water, water drags and lifts grains).
+- Regions made of a single material skip all mixture work (the slot mask is read back from the GPU), so plain water costs
+  the same as before materials existed.

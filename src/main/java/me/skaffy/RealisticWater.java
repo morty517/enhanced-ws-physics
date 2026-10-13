@@ -2,6 +2,7 @@ package me.skaffy;
 
 import me.skaffy.net.MaterialSyncPayload;
 import me.skaffy.net.RemoveAllWaterPayload;
+import me.skaffy.net.SolidifyPayload;
 import net.minecraft.network.chat.Component;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -22,6 +23,12 @@ public class RealisticWater implements ModInitializer {
 		ModContent.init();
 		PayloadTypeRegistry.playC2S().register(MaterialSyncPayload.TYPE, MaterialSyncPayload.CODEC);
 		PayloadTypeRegistry.playC2S().register(RemoveAllWaterPayload.TYPE, RemoveAllWaterPayload.CODEC);
+		PayloadTypeRegistry.playC2S().register(SolidifyPayload.TYPE, SolidifyPayload.CODEC);
+		ServerPlayNetworking.registerGlobalReceiver(SolidifyPayload.TYPE, (payload, context) -> {
+			if (isAuthority(context.server(), context.player())) {
+				context.server().execute(() -> payload.apply(context.player()));
+			}
+		});
 		ServerPlayNetworking.registerGlobalReceiver(MaterialSyncPayload.TYPE, (payload, context) -> {
 			if (isAuthority(context.server(), context.player())) {
 				context.server().execute(() -> payload.apply(context.player()));

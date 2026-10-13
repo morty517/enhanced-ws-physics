@@ -79,8 +79,12 @@ public final class WaterRegion implements AutoCloseable {
 		}
 	}
 
-	/** Per block: fullness, speed and the material slot it is mostly made of. */
-	public record Fill(int x, int y, int z, int dx, int dy, int dz, byte[] fill, byte[] speed, byte[] slot) {
+	/** Per block: fullness, speed, the material slot it is mostly made of, and how much of it solidified (lava). */
+	public record Fill(int x, int y, int z, int dx, int dy, int dz, byte[] fill, byte[] speed, byte[] slot, byte[] stone) {
+		float solidified(int i) {
+			return (this.stone[i] & 0xFF) / 255.0F;
+		}
+
 		int slot(int i) {
 			return this.slot[i];
 		}
@@ -118,13 +122,14 @@ public final class WaterRegion implements AutoCloseable {
 				new ComputeProgram("shift.comp", U, S, S),
 				new ComputeProgram("remove.comp", U, S, S),
 				new ComputeProgram("merge.comp", U, S, S, S, S),
-				new ComputeProgram("blockfill.comp", U, S, S, S, S, S),
+				new ComputeProgram("blockfill.comp", U, S, S, S, S, S, S),
 				new ComputeProgram("mpm_clear.comp", U, S, S, S),
 				new ComputeProgram("mpm_p2g.comp", U, S, S, S, S, S, S),
 				new ComputeProgram("mpm_grid.comp", U, S, S, S, S, S),
 				new ComputeProgram("mpm_g2p.comp", U, S, S, S, S, S, S, S),
-				new ComputeProgram("blockfill.comp", Map.of("MPM", "1"), U, S, S, S, S, S),
-				new ComputeProgram("couple_splat.comp", U, S, S, S)
+				new ComputeProgram("blockfill.comp", Map.of("MPM", "1"), U, S, S, S, S, S, S),
+				new ComputeProgram("couple_splat.comp", U, S, S, S),
+				new ComputeProgram("react.comp", U, S, S, S, S, S)
 			};
 		}
 		return programs;
@@ -171,6 +176,11 @@ public final class WaterRegion implements AutoCloseable {
 	GlBuf cellCount;
 	/** Per cell: particle count and summed material-slot fractions (ivec4), see mixgrid.glsl. */
 	GlBuf cellMix;
+	/** Lava: per cell, particles that turned to stone since the last block sync (react.comp). */
+	@Nullable GlBuf solidify;
+	/** Set each frame by WaterWorld: the water region a lava region reacts with, and the globals this region was recorded with. */
+	@Nullable WaterRegion reactPartner;
+	@Nullable Desc frameUbo;
 	GlBuf cellDens;
 	GlBuf cellFlags;
 	GlBuf staticSolid;
@@ -359,14 +369,16 @@ public final class WaterRegion implements AutoCloseable {
 			byte[] data = new byte[n];
 			byte[] speed = new byte[n];
 			byte[] slots = new byte[n];
+			byte[] stone = new byte[n];
 			ByteBuffer fb = rb.mapped();
 			for (int i = 0; i < n; i++) {
 				int packed = fb.getInt(i * 4);
 				data[i] = (byte) packed;
 				speed[i] = (byte) (packed >>> 8);
 				slots[i] = (byte) (packed >>> 16);
+				stone[i] = (byte) (packed >>> 24);
 			}
-			fill = new Fill(meta[0], meta[1], meta[2], meta[3], meta[4], meta[5], data, speed, slots);
+			fill = new Fill(meta[0], meta[1], meta[2], meta[3], meta[4], meta[5], data, speed, slots, stone);
 			this.fillMeta[slot] = null;
 		}
 		return fill;
@@ -496,6 +508,9 @@ public final class WaterRegion implements AutoCloseable {
 			this.divergence = GlBuf.device(this.numCells * 4L, 0);
 			this.potential = GlBuf.device(this.numCells * 8L, 0);
 			this.couple = GlBuf.device(this.numCells * 16L, 0);
+			if (this.material == Material.LAVA) {
+				this.solidify = GlBuf.device(this.numCells * 4L, 0);
+			}
 			this.wwCount[0] = GlBuf.device(this.numCells * 4L, 0);
 			this.wwCount[1] = GlBuf.device(this.numCells * 4L, 0);
 			this.solver = new PressureSolver(this.nx, this.ny, this.nz);
@@ -507,7 +522,8 @@ public final class WaterRegion implements AutoCloseable {
 	private void releaseGrid() {
 		for (AutoCloseable c : new AutoCloseable[]{
 			this.accum, this.vel, this.velOld, this.valid0, this.valid1, this.cellCount, this.cellMix, this.cellDens, this.cellFlags, this.staticSolid,
-			this.pressure, this.divergence, this.potential, this.wwCount[0], this.wwCount[1], this.mpmGrid, this.solver, this.mesher, this.couple
+			this.pressure, this.divergence, this.potential, this.wwCount[0], this.wwCount[1], this.mpmGrid, this.solver, this.mesher, this.couple,
+			this.solidify
 		}) {
 			if (c != null) {
 				Gl.destroyLater(c);
@@ -799,6 +815,9 @@ public final class WaterRegion implements AutoCloseable {
 			this.cellCount.fill(cb, 0);
 			this.cellMix.fill(cb, 0);
 			this.cellFlags.fill(cb, 0);
+			if (this.solidify != null) {
+				this.solidify.fill(cb, 0);
+			}
 			if (this.material.granular()) {
 				this.mpmGrid.fill(cb, 0);
 			} else {
@@ -886,6 +905,9 @@ public final class WaterRegion implements AutoCloseable {
 			Gl.submit(cb);
 		}
 
+		if (steps > 0 && this.solidify != null && this.reactPartner != null) {
+			this.recordReaction(cb, ubo, frame);
+		}
 		p[0].bind(cb, ubo, Desc.ssbo(this.counters), Desc.ssbo(this.args));
 		p[0].push(cb, C_FLUID + this.cur, C_WW + this.wwCur);
 		p[0].dispatch(cb, 1, 1, 1);
@@ -903,6 +925,31 @@ public final class WaterRegion implements AutoCloseable {
 		this.slotOrigin[slot] = new int[]{this.originCellX(), this.originCellY(), this.originCellZ()};
 		this.slotWindow[slot] = new int[]{this.nx, this.ny, this.nz};
 		this.initialized = true;
+	}
+
+	/** Lava meets water: lava particles in water cells solidify, water particles in lava cells boil into steam (react.comp). */
+	private void recordReaction(Cmd cb, Desc ubo, int frame) {
+		WaterRegion w = this.reactPartner;
+		if (w == null || w.frameUbo == null || !w.initialized || w.cellCount == null) {
+			return;
+		}
+		ComputeProgram react = programs()[24];
+		Gl.barrier(cb);
+		// Lava walks its particles over the water's cell counts.
+		react.bind(cb, ubo, Desc.ssbo(this.particles[this.cur]), Desc.ssbo(this.counters), Desc.ssbo(w.cellCount), Desc.ssbo(this.solidify),
+			Desc.ssbo(this.whitewater[this.wwCur]));
+		react.push(cb, C_FLUID + this.cur, C_WW + this.wwCur, 0, frame,
+			Program.f((this.ox - w.ox) * w.res), Program.f((this.oy - w.oy) * w.res), Program.f((this.oz - w.oz) * w.res), Program.f((float) w.res / this.res),
+			Program.f(w.nx), Program.f(w.ny), Program.f(w.nz), Program.f(WaterSettings.lavaSolidifyRate));
+		react.dispatch(cb, ComputeProgram.groups(this.fluidCapacity, 256), 1, 1);
+		// Water walks its particles over the lava's (with the water's globals, for its whitewater limits).
+		react.bind(cb, w.frameUbo, Desc.ssbo(w.particles[w.cur]), Desc.ssbo(w.counters), Desc.ssbo(this.cellCount), Desc.ssbo(this.solidify),
+			Desc.ssbo(w.whitewater[w.wwCur]));
+		react.push(cb, C_FLUID + w.cur, C_WW + w.wwCur, 1, frame + 7919,
+			Program.f((w.ox - this.ox) * this.res), Program.f((w.oy - this.oy) * this.res), Program.f((w.oz - this.oz) * this.res),
+			Program.f((float) this.res / w.res), Program.f(this.nx), Program.f(this.ny), Program.f(this.nz), Program.f(WaterSettings.lavaBoilRate));
+		react.dispatch(cb, ComputeProgram.groups(w.fluidCapacity, 256), 1, 1);
+		Gl.barrier(cb);
 	}
 
 	private void recordFill(Cmd cb, Desc ubo, int slot) {
@@ -942,11 +989,14 @@ public final class WaterRegion implements AutoCloseable {
 		}
 		ComputeProgram fill = programs()[sand ? 22 : 17];
 		fill.bind(cb, ubo, Desc.ssbo(this.cellCount), Desc.ssbo(this.cellFlags), Desc.ssbo(this.fillBuffer), Desc.ssbo(sand ? this.mpmGrid : this.vel),
-			Desc.ssbo(this.cellMix));
+			Desc.ssbo(this.cellMix), Desc.ssbo(this.solidify != null ? this.solidify : this.cellCount));
 		fill.push(cb, x0, y0, z0, 0, dx, dy, dz, 0);
 		fill.dispatch(cb, ComputeProgram.groups(n, 64), 1, 1);
 		Gl.barrier(cb);
 		this.fillBuffer.copyTo(cb, this.fillReadback[slot], 0, 0, n * 4);
+		if (this.solidify != null) {
+			this.solidify.fill(cb, 0); // counted from here until the next sync
+		}
 		this.fillMeta[slot] = new int[]{this.ox + x0, this.oy + y0, this.oz + z0, dx, dy, dz};
 	}
 

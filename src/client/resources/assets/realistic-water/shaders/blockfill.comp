@@ -10,6 +10,8 @@ layout(std430, binding = 4) readonly buffer Grid { vec4 grid[]; };
 layout(std430, binding = 4) readonly buffer Vel { float vel[]; };
 #endif
 layout(std430, binding = 5) readonly buffer Mix { ivec4 cellMix[]; };
+// Lava: particles that turned to stone per cell (react.comp); read when G.mixInfo.z is set.
+layout(std430, binding = 6) readonly buffer Solidify { int solidify[]; };
 layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
 
 bool fluidAt(ivec3 c) {
@@ -39,12 +41,17 @@ void main() {
     float sum = 0.0;
     float speed = 0.0;
     vec4 mixSum = vec4(0.0);
+    float solid = 0.0;
+    bool lava = G.mixInfo.z > 0.5;
     for (int k = 0; k < res * res * res; k++) {
         ivec3 c = block * res + ivec3(k % res, (k / res) % res, k / (res * res));
         if (!inBox(c)) {
             continue;
         }
         int i = cellIndex(c);
+        if (lava) {
+            solid += float(solidify[i]);
+        }
         uint f = cellFlags[i];
         if ((f & 0xFFu) == CELL_SOLID && (f >> 8) != 0u && (f & CELL_GRANULAR_BIT) == 0u) {
             if (fluidAt(c + ivec3(3, 0, 0)) || fluidAt(c - ivec3(3, 0, 0)) || fluidAt(c + ivec3(0, 0, 3)) || fluidAt(c - ivec3(0, 0, 3))) {
@@ -64,5 +71,7 @@ void main() {
     uint fast = uint(clamp(speed / float(res) * 16.0, 0.0, 255.0));
     // Bits 16..23: the material slot most of this block is made of (decides which block the host writes).
     uint slot = uint(uniformSlot() >= 0 ? uniformSlot() : dominantSlot(mixSum));
-    fill[t] = full | (fast << 8) | (slot << 16);
+    // Bits 24..31: how much of the block (fraction of a full block's particles) solidified since the last readback.
+    uint stone = uint(clamp(solid / (G.simA.y * float(res * res * res)), 0.0, 1.0) * 255.0 + 0.5);
+    fill[t] = full | (fast << 8) | (slot << 16) | (stone << 24);
 }

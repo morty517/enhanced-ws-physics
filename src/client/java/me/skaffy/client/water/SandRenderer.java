@@ -22,6 +22,7 @@ final class SandRenderer implements AutoCloseable {
 		return ResourceLocation.withDefaultNamespace("textures/block/" + switch (m) {
 			case RED_SAND -> "red_sand";
 			case GRAVEL -> "gravel";
+			case SNOW -> "snow";
 			default -> "sand";
 		} + ".png");
 	}
@@ -49,7 +50,7 @@ final class SandRenderer implements AutoCloseable {
 		Image[] images = new Image[4];
 		int total = 16;
 		for (int s = 0; s < 4; s++) {
-			images[s] = loadTexture(textureFor(Material.bySlot(Material.Kind.GRANULAR, Math.min(s, Material.SLOTS - 1))));
+			images[s] = loadTexture(textureFor(Material.bySlot(Material.SAND, s)));
 			total += images[s].argb().length;
 		}
 		GlBuf buf = GlBuf.upload(total * 4L, GlBuf.STORAGE);

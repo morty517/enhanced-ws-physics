@@ -37,9 +37,11 @@ public final class ModContent {
 		registerFluid(Material.WATER, MapColor.WATER);
 		registerFluid(Material.MILK, MapColor.SNOW);
 		registerFluid(Material.SUSPICIOUS_MILK, MapColor.QUARTZ);
+		registerFluid(Material.LAVA, MapColor.FIRE);
 		registerGranular(Material.SAND, MapColor.SAND, SoundType.SAND, NoteBlockInstrument.SNARE);
 		registerGranular(Material.RED_SAND, MapColor.COLOR_ORANGE, SoundType.SAND, NoteBlockInstrument.SNARE);
 		registerGranular(Material.GRAVEL, MapColor.STONE, SoundType.GRAVEL, NoteBlockInstrument.SNARE);
+		registerGranular(Material.SNOW, MapColor.SNOW, SoundType.SNOW, NoteBlockInstrument.HARP);
 	}
 
 	public static final FlowingFluid REALISTIC_WATER = SOURCES.get(Material.WATER);
@@ -70,6 +72,7 @@ public final class ModContent {
 				.noLootTable()
 				.liquid()
 				.sound(SoundType.EMPTY)
+				.lightLevel(state -> m == Material.LAVA ? 15 : 0)
 				.setId(blockKey)));
 		BLOCKS.put(m, block);
 
@@ -125,11 +128,13 @@ public final class ModContent {
 			entries.addAfter(Items.WATER_BUCKET, item(Material.WATER));
 			entries.addAfter(Items.MILK_BUCKET, item(Material.MILK));
 			entries.addAfter(item(Material.MILK), item(Material.SUSPICIOUS_MILK));
+			entries.addAfter(Items.LAVA_BUCKET, item(Material.LAVA));
 		});
 		ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.NATURAL_BLOCKS).register(entries -> {
 			entries.addAfter(Items.SAND, item(Material.SAND));
 			entries.addAfter(Items.RED_SAND, item(Material.RED_SAND));
 			entries.addAfter(Items.GRAVEL, item(Material.GRAVEL));
+			entries.addAfter(Items.SNOW_BLOCK, item(Material.SNOW));
 		});
 	}
 }
