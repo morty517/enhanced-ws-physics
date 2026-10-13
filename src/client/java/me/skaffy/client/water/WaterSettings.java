@@ -211,6 +211,10 @@ public final class WaterSettings {
 
 	/** Grab tool (hold G): radius of the ball of material picked up, in blocks. */
 	public static float grabRadius = 0.6F;
+	/** Thrown snowballs carry a lump of simulated snow (the vanilla snowball is hidden) that splats where it lands. */
+	public static boolean realisticSnowballs = true;
+	/** Edge of the lump of snow on a snowball, in blocks. */
+	public static float snowballSize = 0.3F;
 
 	// Coupling between fluids and granular materials.
 	public static boolean coupling = true;

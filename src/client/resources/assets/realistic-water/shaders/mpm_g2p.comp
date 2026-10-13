@@ -171,9 +171,7 @@ bool advect(uint i, out Advected r) {
         v = p.vel.xyz + G.gravityDt.xyz * DT;
         rest = 0.0;
     }
-    float gw = grabWeight(x);
-    if (gw > 0.0) {
-        v = applyGrab(x, v, gw);
+    if (applyCarriers(x, v) > 0.0) {
         rest = 0.0;
         asleep = false;
     }

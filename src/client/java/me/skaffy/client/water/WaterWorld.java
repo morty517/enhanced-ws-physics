@@ -52,8 +52,8 @@ import org.jetbrains.annotations.Nullable;
 
 public final class WaterWorld {
 	private static final WaterWorld INSTANCE = new WaterWorld();
-	static final int UBO_SLOT = 4608;
-	static final int UBO_SIZE = 4544;
+	static final int UBO_SLOT = 4864;
+	static final int UBO_SIZE = 4784;
 	static final float PARTICLES_PER_CELL = 8.0F;
 	static final float SAND_POISSON = 0.3F;
 
@@ -118,6 +118,7 @@ public final class WaterWorld {
 	private final java.util.EnumMap<Material, Echoes> echoes = new java.util.EnumMap<>(Material.class);
 	private final List<Object[]> pendingFills = new ArrayList<>();
 	private final FlowSounds sounds = new FlowSounds();
+	private final Carriers carriers = new Carriers();
 	/** Voxelised static geometry: one cache for fluids, one for granular materials (they ignore granular blocks). */
 	private @Nullable SolidCache solids;
 	private @Nullable SolidCache sandSolids;
@@ -445,6 +446,9 @@ public final class WaterWorld {
 			this.builtSandResolution = WaterSettings.sandResolution;
 			this.reload(level);
 		}
+		if (!this.failed && Gl.ready()) {
+			this.carriers.tick(mc, level, this);
+		}
 		for (int i = 0; i < 4 && !this.chunkScanQueue.isEmpty(); i++) {
 			this.scanChunk(level, this.chunkScanQueue.poll());
 		}
@@ -673,6 +677,10 @@ public final class WaterWorld {
 		}
 		this.renderedThisFrame = true;
 		Minecraft mc = Minecraft.getInstance();
+		if (!this.failed && mc.level != null && Gl.ready()) {
+			// Before the empty check: a snowball may be what starts a region.
+			this.carriers.update(mc, mc.level, this);
+		}
 		if (this.regions.isEmpty() || this.failed || mc.level == null || !Gl.ready()) {
 			this.lastFrameNanos = 0L;
 			return;
@@ -733,7 +741,6 @@ public final class WaterWorld {
 		this.smoothedFrameMs = this.smoothedFrameMs * 0.9F + frameDt * 1000.0F * 0.1F;
 		Vec3 cam = mc.gameRenderer.getMainCamera().getPosition();
 		double reach = (mc.options.renderDistance().get() + 2) * 16.0;
-		Grabber.update(mc);
 
 		List<WaterRegion> active = new ArrayList<>();
 		List<WaterRegion> merged = new ArrayList<>();
@@ -864,7 +871,7 @@ public final class WaterWorld {
 			if (sand && r.waterPartner != null && r.waterPartner.lastMaxSpeed / r.waterPartner.res > 0.3F) {
 				r.wake(this.frameCounter);
 			}
-			if (sand && (entityNear(level, r) || grabNear(r))) {
+			if (sand && (entityNear(level, r) || this.grabNear(r))) {
 				r.wake(this.frameCounter);
 			}
 			int regionSteps = !sand ? steps : r.dormant() ? 0 : sandSteps;
@@ -961,15 +968,20 @@ public final class WaterWorld {
 		return !level.getEntities((Entity) null, box, e -> !e.isSpectator()).isEmpty() || !movingPistons(level, box.inflate(1.0)).isEmpty();
 	}
 
-	private static boolean grabNear(WaterRegion r) {
-		if (!Grabber.active() || r.boxWorld == null) {
+	private boolean grabNear(WaterRegion r) {
+		if (r.boxWorld == null) {
 			return false;
 		}
 		int[] b = r.boxWorld;
 		double h = 1.0 / r.res;
-		double m = Grabber.radius() + 1.0;
-		Vec3 c = Grabber.center();
-		return c.x > b[0] * h - m && c.x < b[3] * h + m && c.y > b[1] * h - m && c.y < b[4] * h + m && c.z > b[2] * h - m && c.z < b[5] * h + m;
+		for (Carriers.Carrier carrier : this.carriers.current()) {
+			double m = carrier.radius() + 1.0;
+			Vec3 c = carrier.center();
+			if (c.x > b[0] * h - m && c.x < b[3] * h + m && c.y > b[1] * h - m && c.y < b[4] * h + m && c.z > b[2] * h - m && c.z < b[5] * h + m) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static boolean overlaps(int[] a, int[] b) {
@@ -1081,14 +1093,15 @@ public final class WaterWorld {
 			impactLogJ);
 		r.frameUniformSlot = r.uniformSlot(this.frameCounter, this.sourceSlotBits(r));
 		this.writeMaterialTable(b, o + 3920, dt, r.frameUniformSlot, r.material.fluid() ? r.material : Material.SAND);
-		if (Grabber.active()) {
-			Vec3 c = Grabber.center();
-			Vec3 v = Grabber.velocity();
-			putFloats(b, o + 4512, (float) (c.x - r.ox) * res, (float) (c.y - r.oy) * res, (float) (c.z - r.oz) * res, Grabber.radius() * res);
-			putFloats(b, o + 4528, (float) v.x * res, (float) v.y * res, (float) v.z * res, 1.0F);
-		} else {
-			putFloats(b, o + 4512, 0.0F, 0.0F, 0.0F, 0.0F);
-			putFloats(b, o + 4528, 0.0F, 0.0F, 0.0F, 0.0F);
+		List<Carriers.Carrier> carried = this.carriers.current();
+		int nc = Math.min(carried.size(), Carriers.MAX);
+		putFloats(b, o + 4512, nc, 0.0F, 0.0F, 0.0F);
+		for (int k = 0; k < nc; k++) {
+			Carriers.Carrier c = carried.get(k);
+			Vec3 p = c.center();
+			Vec3 v = c.velocity();
+			putFloats(b, o + 4528 + k * 16, (float) (p.x - r.ox) * res, (float) (p.y - r.oy) * res, (float) (p.z - r.oz) * res, c.radius() * res);
+			putFloats(b, o + 4656 + k * 16, (float) v.x * res, (float) v.y * res, (float) v.z * res, 1.0F);
 		}
 		this.uboRing.flush(o, UBO_SIZE);
 		return sourceCount;
@@ -1293,6 +1306,17 @@ public final class WaterWorld {
 			bodies, fluid, ww, piles, sand, cells, windowCells, this.smoothedFrameMs, this.lastSteps, this.lastDt * 1000.0F, this.lastSandSteps,
 			this.lastSandDt * 1000.0F, this.sources.size(), isHost() ? "(syncing blocks)" : "(not host: blocks follow the server)")
 			+ (Gl.deviceInfo().isEmpty() ? "" : "  |  " + Gl.deviceInfo());
+	}
+
+	public void onEntityUnload(net.minecraft.world.entity.Entity e) {
+		if (!this.failed && Gl.ready()) {
+			this.carriers.onRemoved(e, this);
+		}
+	}
+
+	/** True when the simulation can run (GL ready, not failed) — otherwise vanilla stand-ins (snowball sprites) stay visible. */
+	public boolean active() {
+		return !this.failed && Gl.ready();
 	}
 
 	public int framesRendered() {

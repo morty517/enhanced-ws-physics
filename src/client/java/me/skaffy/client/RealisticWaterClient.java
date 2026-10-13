@@ -27,9 +27,21 @@ public class RealisticWaterClient implements ClientModInitializer {
 		ClientTickEvents.END_CLIENT_TICK.register(water::tick);
 		ClientChunkEvents.CHUNK_LOAD.register(water::onChunkLoad);
 		ClientChunkEvents.CHUNK_UNLOAD.register(water::onChunkUnload);
+		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents.ENTITY_UNLOAD.register((entity, level) -> water.onEntityUnload(entity));
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> water.clear());
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> water.shutdown());
 		me.skaffy.client.water.Grabber.register();
+		// Snowballs: the simulation draws the snow they carry, so the flat vanilla sprite is hidden (unless turned off).
+		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(net.minecraft.world.entity.EntityType.SNOWBALL,
+			ctx -> new net.minecraft.client.renderer.entity.ThrownItemRenderer<net.minecraft.world.entity.projectile.Snowball>(ctx) {
+				@Override
+				public void render(net.minecraft.client.renderer.entity.state.ThrownItemRenderState state, com.mojang.blaze3d.vertex.PoseStack pose,
+					net.minecraft.client.renderer.MultiBufferSource buffers, int light) {
+					if (!me.skaffy.client.water.WaterSettings.realisticSnowballs || !me.skaffy.client.water.WaterWorld.get().active()) {
+						super.render(state, pose, buffers, light);
+					}
+				}
+			});
 		SelfTest.init();
 	}
 

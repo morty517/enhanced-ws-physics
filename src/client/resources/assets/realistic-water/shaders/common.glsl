@@ -64,8 +64,9 @@ layout(std140, binding = 0) uniform Globals {
     vec4 grainB[8]; // water drag rate, grains drawn per particle, tint (0xRRGGBB as a float)
     vec4 grainC[8]; // toughness (plastic strain to break, 0 = never breaks), healing under compression (1/strain)
     vec4 mixInfo;   // x = fluid mixing rate (1/s), y = uniform slot or -1, z = 1 for lava (solidifies), w = lava crust coverage
-    vec4 grabA;     // grab tool: centre (cells), radius (cells)
-    vec4 grabB;     // grab tool: cursor velocity (cells/s), w = 1 while held
+    vec4 carrierInfo;   // x = number of carriers
+    vec4 carrierA[8];   // carriers (grab tool, snowballs): centre (cells), radius (cells)
+    vec4 carrierB[8];   // velocity (cells/s), w = 1 to keep moving with it
 } G;
 
 bool isSand() {
@@ -188,19 +189,32 @@ vec4 mixSums(ivec4 m) {
     return vec4(float(m.x) * MIX_FP - float(m.y) - float(m.z) - float(m.w), float(m.y), float(m.z), float(m.w));
 }
 
-// ---- Grab tool: material near the cursor's grab point follows it (and keeps its speed when let go, so it can be thrown).
-float grabWeight(vec3 x) {
-    if (G.grabB.w < 0.5) {
-        return 0.0;
-    }
-    float r = length(G.grabA.xyz - x);
-    return 1.0 - smoothstep(0.75 * G.grabA.w, G.grabA.w, r);
+// ---- Carriers (the grab tool, snowballs): material inside a carrier's sphere moves with it as one piece. Particles keep their
+// places (they only take on the carrier's velocity); only the outer shell is pulled in so the piece doesn't drift out.
+float carrierWeight(int k, vec3 x) {
+    float r = length(G.carrierA[k].xyz - x);
+    return 1.0 - smoothstep(0.8 * G.carrierA[k].w, G.carrierA[k].w, r);
 }
 
-vec3 applyGrab(vec3 x, vec3 v, float w) {
-    // Move with the cursor; a gentle pull towards the grab point keeps the piece from drifting off without crushing it.
-    vec3 want = G.grabB.xyz + (G.grabA.xyz - x) * 2.0;
-    return mix(v, want, w * (1.0 - exp(-30.0 * DT)));
+// Returns the summed weight (0 = not carried).
+float applyCarriers(vec3 x, inout vec3 v) {
+    float total = 0.0;
+    int n = int(G.carrierInfo.x);
+    for (int k = 0; k < n; k++) {
+        float w = carrierWeight(k, x);
+        if (w <= 0.0) {
+            continue;
+        }
+        vec3 d = G.carrierA[k].xyz - x;
+        float r = length(d);
+        float shell = max(r - 0.55 * G.carrierA[k].w, 0.0);
+        vec3 want = G.carrierB[k].xyz + (r > 1e-4 ? d / r : vec3(0.0)) * shell * 8.0;
+        // Held up: undo this step's gravity (already in v), or the piece sags to the bottom of the sphere and flattens.
+        v -= G.gravityDt.xyz * DT * w;
+        v = mix(v, want, w * (1.0 - exp(-40.0 * DT)));
+        total += w;
+    }
+    return min(total, 1.0);
 }
 
 vec2 signNotZero(vec2 v) {

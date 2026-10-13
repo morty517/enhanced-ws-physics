@@ -40,6 +40,8 @@ public final class SelfTest {
 	/** -Drealisticwater.selftest.grab=true (solids scene): grab the middle block and lift it by looking up. */
 	private static final boolean GRAB = Boolean.getBoolean("realisticwater.selftest.grab");
 	private static int grabFrame = -1;
+	/** -Drealisticwater.selftest.throw=true (solids scene): throw snowballs at the blocks. */
+	private static final boolean THROW = Boolean.getBoolean("realisticwater.selftest.throw");
 	private static final Material[] SOLID_MATERIALS = {Material.SANDSTONE, Material.DIRT, Material.CLAY, Material.SUSPICIOUS_CURD, Material.SNOW};
 	private static final float PITCH = PIT ? 62.0F : 25.0F;
 	private static boolean splashShot;
@@ -145,6 +147,12 @@ public final class SelfTest {
 			case WATER -> {
 				mc.player.setYRot(0.0F);
 				mc.player.setXRot(PITCH);
+				if (SOLIDS && THROW && mc.player != null && ticks % 6 == 0 && ticks >= 30 && ticks <= 60) {
+					var bp = mc.player.blockPosition();
+					double side = ((ticks / 6) % 3 - 1) * 1.8;
+					mc.player.connection.sendCommand(String.format(java.util.Locale.ROOT, "summon snowball %.2f %.2f %.2f {Motion:[0.0,0.06,1.1]}",
+						bp.getX() + 0.5 + side, bp.getY() + 0.9, bp.getZ() + 2.0));
+				}
 				if (SOLIDS && GRAB) {
 					int f = frames() - frameMark;
 					if (f == 40) {

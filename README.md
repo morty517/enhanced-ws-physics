@@ -69,4 +69,8 @@ Java 21 is enough to run Gradle (Loom 1.14).
 
 Hold **G** (rebindable under Controls -> Realistic Water) to pick up the simulated material under the crosshair: a ball of
 `grabRadius` blocks follows your view at the distance it was picked at (scroll to move it), tearing pieces off cohesive
-blocks. Let go and it keeps its speed, so it can be thrown. Works on fluids, lava and every granular material.
+blocks. Let go and it keeps its speed, so it can be thrown. Works on fluids, lava and every granular material. Carried
+material keeps its shape (particles take on the carrier's velocity, only the outer shell is pulled in, gravity is held off).
+
+Realistic snowballs (`realisticSnowballs`): a thrown snowball carries a lump of simulated snow along its flight (the vanilla
+sprite is hidden); when it hits, the snow flies on and splats, sticks or breaks apart.
