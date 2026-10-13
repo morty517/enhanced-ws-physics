@@ -91,22 +91,34 @@ const float COUPLE_FP = 4096.0;
 const float FP_SCALE = 65536.0;
 
 // ---- Material mixtures -------------------------------------------------------------------------------------------------
-// A fluid particle's vel.w holds its mixture as an exact integer in a float: fraction of slot 1 * 1023 + 1024 * (fraction of
-// slot 2 * 1023); slot 0 (water) is the rest. A grain's vel.w holds slot + a random fraction (the grain's look).
-// The cellMix grids hold per cell: x = particle count, y/z = summed slot 1/2 fractions * MIX_FP.
+// Materials of one group share a simulation and are told apart by a slot (0..3). A fluid particle's vel.w holds its mixture
+// as an exact integer in a float: fraction of slot 1 * 1023 + 1024 * (fraction of slot 2 * 1023); slot 0 is the rest (fluid
+// groups use at most 3 slots). A grain's vel.w holds its slot + a random fraction (the grain's look).
+// cellMix grids hold per cell: x = particle count, y/z/w = summed slot 1/2/3 fractions * MIX_FP.
+// G.mixInfo.y is the slot every particle of the region has, or -1 when the region holds a mixture (CPU-side fast path).
 const float MIX_FP = 256.0;
+#define C_SLOTS 15
+#define SLOT_MIXED_BIT 0x80u
 
-vec3 mixWeights(float code) {
+int uniformSlot() {
+    return int(G.mixInfo.y);
+}
+
+vec4 slotWeights(int slot) {
+    return vec4(equal(ivec4(slot), ivec4(0, 1, 2, 3)));
+}
+
+vec4 mixWeights(float code) {
     float c = round(max(code, 0.0));
     float hi = floor(c / 1024.0);
     vec2 f = vec2(c - hi * 1024.0, hi) / 1023.0;
-    return vec3(max(1.0 - f.x - f.y, 0.0), f);
+    return vec4(max(1.0 - f.x - f.y, 0.0), f, 0.0);
 }
 
-vec3 normalizeMix(vec3 w) {
-    w = max(w, vec3(0.0));
-    float s = w.x + w.y + w.z;
-    return s > 1e-6 ? w / s : vec3(1.0, 0.0, 0.0);
+vec4 normalizeMix(vec4 w) {
+    w = max(w, vec4(0.0));
+    float s = w.x + w.y + w.z + w.w;
+    return s > 1e-6 ? w / s : vec4(1.0, 0.0, 0.0, 0.0);
 }
 
 float mixCodeQ(vec2 q) {
@@ -117,35 +129,47 @@ float mixCodeQ(vec2 q) {
     return q.x + 1024.0 * q.y;
 }
 
-float mixCode(vec3 w) {
+float mixCode(vec4 w) {
     return mixCodeQ(round(normalizeMix(w).yz * 1023.0));
-}
-
-int grainSlot(float tag) {
-    return clamp(int(floor(tag)), 0, 2);
-}
-
-int dominantSlot(vec3 w) {
-    return w.y > w.x && w.y >= w.z ? 1 : (w.z > w.x && w.z > w.y ? 2 : 0);
 }
 
 float slotCode(int slot) {
     return slot == 1 ? 1023.0 : (slot == 2 ? 1023.0 * 1024.0 : 0.0);
 }
 
-vec4 mixFluidA(vec3 w) { return w.x * G.fluidA[0] + w.y * G.fluidA[1] + w.z * G.fluidA[2]; }
+// Bit of a fluid particle for the region's slot mask: its slot when pure, SLOT_MIXED_BIT when a mixture.
+uint fluidSlotBit(float code) {
+    float c = round(max(code, 0.0));
+    return c == 0.0 ? 1u : (c == 1023.0 ? 2u : (c == 1023.0 * 1024.0 ? 4u : SLOT_MIXED_BIT));
+}
+
+int grainSlot(float tag) {
+    return clamp(int(floor(tag)), 0, 3);
+}
+
+int dominantSlot(vec4 w) {
+    int best = 0;
+    float bw = w.x;
+    if (w.y > bw) { best = 1; bw = w.y; }
+    if (w.z > bw) { best = 2; bw = w.z; }
+    if (w.w > bw) { best = 3; }
+    return best;
+}
+
+vec4 mixFluidA(vec4 w) { return w.x * G.fluidA[0] + w.y * G.fluidA[1] + w.z * G.fluidA[2] + w.w * G.fluidA[3]; }
+vec4 mixFluidC(vec4 w) { return w.x * G.fluidC[0] + w.y * G.fluidC[1] + w.z * G.fluidC[2] + w.w * G.fluidC[3]; }
+
 // Scattering adds up by density, so the colour is the density-weighted mean (a little milk turns water milky).
-vec4 mixFluidB(vec3 w) {
-    vec3 d = w * vec3(G.fluidB[0].w, G.fluidB[1].w, G.fluidB[2].w);
-    float total = d.x + d.y + d.z;
-    vec3 c = (d.x * G.fluidB[0].rgb + d.y * G.fluidB[1].rgb + d.z * G.fluidB[2].rgb) / max(total, 1e-6);
+vec4 mixFluidB(vec4 w) {
+    vec4 d = w * vec4(G.fluidB[0].w, G.fluidB[1].w, G.fluidB[2].w, G.fluidB[3].w);
+    float total = d.x + d.y + d.z + d.w;
+    vec3 c = (d.x * G.fluidB[0].rgb + d.y * G.fluidB[1].rgb + d.z * G.fluidB[2].rgb + d.w * G.fluidB[3].rgb) / max(total, 1e-6);
     return vec4(total > 1e-6 ? c : G.fluidB[0].rgb, total);
 }
-vec4 mixFluidC(vec3 w) { return w.x * G.fluidC[0] + w.y * G.fluidC[1] + w.z * G.fluidC[2]; }
 
-// Summed weights (slot0, slot1, slot2) of a cellMix entry.
-vec3 mixSums(ivec4 m) {
-    return vec3(float(m.x) * MIX_FP - float(m.y) - float(m.z), float(m.y), float(m.z));
+// Summed weights (slot0..3) of a cellMix entry.
+vec4 mixSums(ivec4 m) {
+    return vec4(float(m.x) * MIX_FP - float(m.y) - float(m.z) - float(m.w), float(m.y), float(m.z), float(m.w));
 }
 
 vec2 signNotZero(vec2 v) {

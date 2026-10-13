@@ -38,7 +38,7 @@ void main() {
     ivec3 block = pc.a.xyz + ivec3(t % nb.x, (t / nb.x) % nb.y, t / (nb.x * nb.y));
     float sum = 0.0;
     float speed = 0.0;
-    vec3 mixSum = vec3(0.0);
+    vec4 mixSum = vec4(0.0);
     for (int k = 0; k < res * res * res; k++) {
         ivec3 c = block * res + ivec3(k % res, (k / res) % res, k / (res * res));
         if (!inBox(c)) {
@@ -52,7 +52,9 @@ void main() {
             }
         } else {
             sum += float(cellCount[i]);
-            mixSum += mixSums(cellMix[i]);
+            if (uniformSlot() < 0) {
+                mixSum += mixSums(cellMix[i]);
+            }
             if ((f & 0xFFu) == CELL_FLUID) {
                 speed = max(speed, cellSpeed(c));
             }
@@ -61,6 +63,6 @@ void main() {
     uint full = uint(clamp(sum / (G.simA.y * float(res * res * res)), 0.0, 1.0) * 255.0 + 0.5);
     uint fast = uint(clamp(speed / float(res) * 16.0, 0.0, 255.0));
     // Bits 16..23: the material slot most of this block is made of (decides which block the host writes).
-    uint slot = uint(dominantSlot(mixSum));
+    uint slot = uint(uniformSlot() >= 0 ? uniformSlot() : dominantSlot(mixSum));
     fill[t] = full | (fast << 8) | (slot << 16);
 }

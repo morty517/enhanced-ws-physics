@@ -197,7 +197,7 @@ void main() {
     vec4 g = texture(gbuffer, uv);
     float fd = g.w;
     vec3 n = octDecode(g.xy);
-    vec3 surfaceMix = mixWeights(g.z);
+    vec4 surfaceMix = mixWeights(g.z);
     vec4 foam = texture(foamTex, uv);
     float sceneDev = texture(sceneDepth, uv).r;
     float sceneDist = linearDepth(sceneDev);
@@ -211,7 +211,7 @@ void main() {
     float outDepth = sceneDev;
 
     if (underwater) {
-        vec3 camMix = viewState.z > 0.0 ? mixWeights(viewState.z - 1.0) : vec3(1.0, 0.0, 0.0);
+        vec4 camMix = viewState.z > 0.0 ? mixWeights(viewState.z - 1.0) : vec4(1.0, 0.0, 0.0, 0.0);
         vec3 absorb = mixFluidA(camMix).rgb;
         vec4 scatter = mixFluidB(camMix);
         vec3 deep = scatter.rgb * ambient;

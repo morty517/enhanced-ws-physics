@@ -89,7 +89,8 @@ public final class WaterRenderer implements AutoCloseable {
 		int h = this.height;
 		for (Body body : bodies) {
 			WaterRegion r = body.region();
-			r.mesher.build(cb, body.ubo(), r.currentParticles(), r.counters, WaterRegion.C_FLUID + r.cur, r.args, r.staticSolid, r.mesher.fineBox(r.box),
+			r.mesher.build(cb, body.ubo(), r.currentParticles(), r.counters, WaterRegion.C_FLUID + r.cur, r.args, r.staticSolid, r.cellMix,
+				r.mesher.fineBox(r.box),
 				WaterSettings.sheetFill);
 			Gl.submit(cb);
 		}
@@ -104,7 +105,7 @@ public final class WaterRenderer implements AutoCloseable {
 		for (Body body : bodies) {
 			WaterRegion r = body.region();
 			float radius = WaterSettings.particleRadius / r.res;
-			this.meshFront.bind(cb, body.ubo(), Desc.ssbo(r.mesher.verts), Desc.ssbo(r.mesher.quads), view, Desc.ssbo(r.cellMix));
+			this.meshFront.bind(cb, body.ubo(), Desc.ssbo(r.mesher.verts), Desc.ssbo(r.mesher.quads), view, Desc.ssbo(r.mesher.vertMix));
 			this.meshFront.drawIndirect(cb, r.mesher.meshCounters, SurfaceMesher.DRAW_ARGS_OFFSET);
 			this.dropletFront.bind(cb, body.ubo(), Desc.ssbo(r.currentParticles()), Desc.ssbo(r.mesher.densA), view);
 			this.dropletFront.push(cb, Program.f(radius), Program.f(0.0F), Program.f(0.15F));

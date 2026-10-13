@@ -12,8 +12,9 @@ layout(std430, binding = 7) readonly buffer Static { uint staticSolid[]; };
 layout(std430, binding = 8) readonly buffer Pot { vec2 potential[]; };
 layout(std430, binding = 9) writeonly buffer WwDst { Particle wwDst[]; };
 layout(std430, binding = 10) readonly buffer WwCount { int wwCount[]; };
-// Per-cell particle count and mixture sums (count in x), see p2g.comp.
-layout(std430, binding = 11) readonly buffer Mix { ivec4 cellMix[]; };
+// Mixed regions: cellMix (count, slot sums; stride 4). Uniform regions: just cellCount (stride 1).
+layout(std430, binding = 11) readonly buffer Mix { int cellMixI[]; };
+#define MIX_STRIDE (uniformSlot() < 0 ? 4 : 1)
 layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
 #include "compact.glsl"
 
@@ -25,7 +26,7 @@ bool solidAt(vec3 p) {
 }
 
 int countAt(ivec3 c) {
-    return inBox(c) ? cellMix[cellIndex(c)].x : 0;
+    return inBox(c) ? cellMixI[cellIndex(c) * MIX_STRIDE] : 0;
 }
 
 bool waterFilm(vec3 x, vec4 film, inout vec3 v, inout vec3 dx, inout float dryness) {
@@ -164,25 +165,27 @@ bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out float m
     vec3 x = p.pos.xyz;
     vec3 v = p.vel.xyz;
     float tag = p.pos.w;
-    vec3 mw = mixWeights(p.vel.w);
+    vec4 mw = uniformSlot() >= 0 ? vec4(0.0) : mixWeights(p.vel.w);
+    vec4 mat = uniformSlot() >= 0 ? slotWeights(uniformSlot()) : mw;
     float maxSpeed = G.simB.x;
     bool gridded = inInnerBox(x);
     vec3 dx;
     if (gridded) {
         vec3 uNew = sampleVel(x);
         vec3 uOld = sampleVelOld(x);
-        v = mix(uNew, v + (uNew - uOld), mixFluidA(mw).w);
+        v = mix(uNew, v + (uNew - uOld), mixFluidA(mat).w);
         dx = DT * sampleVel(x + 0.5 * DT * uNew);
-        if (!waterFilm(x, mixFluidC(mw), v, dx, tag)) {
+        if (!waterFilm(x, mixFluidC(mat), v, dx, tag)) {
             return false;
         }
         // Mixing: relax towards the cell's mean mixture. Codes are quantised to 1/1023, so round stochastically or slow
         // mixing would never move a particle off its code.
         ivec3 mc = ivec3(floor(x));
-        if (inBox(mc) && G.mixInfo.x > 0.0) {
-            ivec4 cm = cellMix[cellIndex(mc)];
+        if (uniformSlot() < 0 && inBox(mc) && G.mixInfo.x > 0.0) {
+            int ci = cellIndex(mc) * 4;
+            ivec4 cm = ivec4(cellMixI[ci], cellMixI[ci + 1], cellMixI[ci + 2], cellMixI[ci + 3]);
             if (cm.x > 1) {
-                vec3 mean = mixSums(cm) / (float(cm.x) * MIX_FP);
+                vec4 mean = mixSums(cm) / (float(cm.x) * MIX_FP);
                 mw = mix(mw, mean, 1.0 - exp(-G.mixInfo.x * DT));
             }
         }
@@ -213,7 +216,7 @@ bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out float m
     vOut = v;
     tagOut = tag;
     uint seed = hash(i * 2246822519u + uint(pc.a.w) * 3266489917u);
-    mixOut = mixCodeQ(floor(normalizeMix(mw).yz * 1023.0 + vec2(rand(seed), rand(seed))));
+    mixOut = uniformSlot() >= 0 ? p.vel.w : mixCodeQ(floor(normalizeMix(mw).yz * 1023.0 + vec2(rand(seed), rand(seed))));
     griddedOut = gridded;
     return true;
 }

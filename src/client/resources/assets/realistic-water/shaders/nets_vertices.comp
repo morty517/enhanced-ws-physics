@@ -6,6 +6,9 @@ layout(std430, binding = 2) writeonly buffer VertexId { uint vertexId[]; };
 layout(std430, binding = 3) writeonly buffer Verts { vec4 verts[]; };
 layout(std430, binding = 4) buffer MeshCounters { uint meshCounters[]; };
 layout(std430, binding = 5) readonly buffer Static { uint staticSolid[]; };
+layout(std430, binding = 6) readonly buffer Mix { ivec4 cellMix[]; };
+layout(std430, binding = 7) writeonly buffer VertMix { float vertMix[]; };
+#include "mixgrid.glsl"
 layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
 
 float densAt(ivec3 p) {
@@ -95,5 +98,7 @@ void main() {
     }
     vec3 simPos = (vec3(c) + local + 0.5) / float(G.fine.w);
     verts[vi] = vec4(simPos, uintBitsToFloat(packNormal(normal, solidNear(simPos))));
+    // Mixture a little inside the surface (the normal points out), where the cells hold particles.
+    vertMix[vi] = isSand() ? 0.0 : mixCode(mixAt(simPos - normal * 0.35));
     vertexId[id] = vi;
 }

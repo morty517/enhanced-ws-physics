@@ -665,6 +665,16 @@ public final class WaterWorld {
 		return out;
 	}
 
+	/** Springs keep adding their material, so they count towards the region's slots every frame. */
+	private int sourceSlotBits(WaterRegion r) {
+		int bits = 0;
+		for (Source s : this.sourceEntriesFor(r)) {
+			int slot = s.material().slot();
+			bits |= slot == 0 ? 1 : slot == 1 ? 2 : slot == 2 ? 4 : WaterRegion.SLOT_MIXED_BIT;
+		}
+		return bits;
+	}
+
 	private List<Source> sourceEntriesFor(WaterRegion r) {
 		List<Source> out = new ArrayList<>();
 		if (!r.material.fluid()) {
@@ -1010,13 +1020,14 @@ public final class WaterWorld {
 		float impactLogJ = (float) Math.log(Math.max(1.0F - WaterSettings.sandImpactCompression, 0.01F));
 		putFloats(b, o + 3904, WaterSettings.sandRestSpeed * res, WaterSettings.sandRestTime, WaterSettings.sandWakeAccel * WaterSettings.gravity * res * dt,
 			impactLogJ);
-		this.writeMaterialTable(b, o + 3920, dt);
+		r.frameUniformSlot = r.uniformSlot(this.frameCounter, this.sourceSlotBits(r));
+		this.writeMaterialTable(b, o + 3920, dt, r.frameUniformSlot);
 		this.uboRing.flush(o, UBO_SIZE);
 		return sourceCount;
 	}
 
 	/** fluidA/B/C[4], grainA/B[4], mixInfo: what each material slot is like (see common.glsl). */
-	private void writeMaterialTable(ByteBuffer b, int o, float dt) {
+	private void writeMaterialTable(ByteBuffer b, int o, float dt, int uniformSlot) {
 		for (int s = 0; s < 4; s++) {
 			Material f = Material.bySlot(Material.Kind.FLUID, Math.min(s, Material.SLOTS - 1));
 			float flip = (float) Math.pow(f == Material.SUSPICIOUS_MILK ? WaterSettings.suspiciousFlipRatio : WaterSettings.flipRatio, dt * 60.0F);
@@ -1048,7 +1059,7 @@ public final class WaterWorld {
 				gravel ? WaterSettings.gravelBrightness : WaterSettings.sandBrightness);
 			putFloats(b, o + 256 + s * 16, gravel ? WaterSettings.gravelWaterDrag : WaterSettings.sandWaterDrag, grainsPerParticle(g), 0.0F, 0.0F);
 		}
-		putFloats(b, o + 320, WaterSettings.fluidMixRate, 0.0F, 0.0F, 0.0F);
+		putFloats(b, o + 320, WaterSettings.fluidMixRate, uniformSlot, 0.0F, 0.0F);
 	}
 
 	private static int grainsPerParticle(Material m) {

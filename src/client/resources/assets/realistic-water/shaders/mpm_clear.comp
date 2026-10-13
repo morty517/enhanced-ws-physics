@@ -13,5 +13,7 @@ void main() {
     int i = cellIndex(boxCell(t));
     grid[i] = ivec4(0);
     cellCount[i] = 0;
-    cellMix[i] = ivec4(0);
+    if (uniformSlot() < 0) {
+        cellMix[i] = ivec4(0);
+    }
 }

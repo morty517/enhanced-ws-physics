@@ -5,7 +5,7 @@ layout(std430, binding = 1) readonly buffer Src { Particle src[]; };
 layout(std430, binding = 2) buffer Accum { int accum[]; };
 layout(std430, binding = 3) buffer Count { int cellCount[]; };
 layout(std430, binding = 4) buffer Dens { int cellDens[]; };
-layout(std430, binding = 5) readonly buffer Counters { uint counters[]; };
+layout(std430, binding = 5) buffer Counters { uint counters[]; };
 layout(std430, binding = 6) buffer Mix { int cellMix[]; };
 layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
 
@@ -31,16 +31,21 @@ void splat(int comp, vec3 x, float value) {
     }
 }
 
-void main() {
+// Splats particle GID_U; returns its slot-mask bit (0 for dead slots).
+uint body() {
     uint i = GID_U;
     if (i >= counters[pc.a.x]) {
-        return;
+        return 0u;
     }
     Particle p = src[i];
     vec3 x = p.pos.xyz;
     vec3 v = p.vel.xyz;
-    if (p.pos.w < 0.0 || !inInnerBox(x)) {
-        return;
+    if (p.pos.w < 0.0) {
+        return 0u;
+    }
+    uint bits = fluidSlotBit(p.vel.w);
+    if (!inInnerBox(x)) {
+        return bits;
     }
     splat(0, x, v.x);
     splat(1, x, v.y);
@@ -50,10 +55,12 @@ void main() {
     if (inBox(cell)) {
         int ci = cellIndex(cell);
         atomicAdd(cellCount[ci], 1);
-        vec3 mw = mixWeights(p.vel.w);
-        atomicAdd(cellMix[4 * ci], 1);
-        atomicAdd(cellMix[4 * ci + 1], int(round(mw.y * MIX_FP)));
-        atomicAdd(cellMix[4 * ci + 2], int(round(mw.z * MIX_FP)));
+        if (uniformSlot() < 0) {
+            vec4 mw = mixWeights(p.vel.w);
+            atomicAdd(cellMix[4 * ci], 1);
+            atomicAdd(cellMix[4 * ci + 1], int(round(mw.y * MIX_FP)));
+            atomicAdd(cellMix[4 * ci + 2], int(round(mw.z * MIX_FP)));
+        }
     }
     vec3 g = x - 0.5;
     ivec3 b = ivec3(floor(g));
@@ -69,5 +76,24 @@ void main() {
                 atomicAdd(cellDens[cellIndex(c)], int(round(w * FP_SCALE)));
             }
         }
+    }
+    return bits;
+}
+
+shared uint groupSlots;
+
+void main() {
+    // Every invocation reaches both barriers: the region's slot mask is reduced per workgroup, then OR-ed into the counters.
+    if (gl_LocalInvocationIndex == 0u) {
+        groupSlots = 0u;
+    }
+    barrier();
+    uint bits = body();
+    if (bits != 0u) {
+        atomicOr(groupSlots, bits);
+    }
+    barrier();
+    if (gl_LocalInvocationIndex == 0u && groupSlots != 0u) {
+        atomicOr(counters[C_SLOTS], groupSlots);
     }
 }

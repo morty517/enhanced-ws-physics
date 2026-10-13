@@ -55,8 +55,8 @@ vec3 waterDrag(ivec3 c, vec3 v) {
         return v;
     }
     vec3 vw = vec3(wSampleFace(0, xw), wSampleFace(1, xw), wSampleFace(2, xw)) / pc.b.w;
-    vec3 mw = mixAt(vec3(c) + 0.5);
-    float drag = mw.x * G.grainB[0].x + mw.y * G.grainB[1].x + mw.z * G.grainB[2].x;
+    vec4 mw = mixAt(vec3(c) + 0.5);
+    float drag = mw.x * G.grainB[0].x + mw.y * G.grainB[1].x + mw.z * G.grainB[2].x + mw.w * G.grainB[3].x;
     v = mix(v, vw, 1.0 - exp(-drag * DT));
     return v - G.gravityDt.xyz * DT * pc.c.y;
 }

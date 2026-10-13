@@ -25,6 +25,8 @@ final class SurfaceMesher implements AutoCloseable {
 	private final GlBuf zb;
 	private final GlBuf vertexId;
 	final GlBuf verts;
+	/** Mixture code per vertex (fluids), see nets_vertices.comp. */
+	final GlBuf vertMix;
 	final GlBuf quads;
 	final GlBuf meshCounters;
 
@@ -53,6 +55,7 @@ final class SurfaceMesher implements AutoCloseable {
 		this.zb = GlBuf.device(this.fineCount * 16L, 0);
 		this.vertexId = GlBuf.device(this.cubeCount * 4L, 0);
 		this.verts = GlBuf.device(this.vertexCapacity * 16L, 0);
+		this.vertMix = GlBuf.device(this.vertexCapacity * 4L, 0);
 		this.quads = GlBuf.device(this.quadCapacity * 16L, 0);
 		this.meshCounters = GlBuf.device(64, GlBuf.INDIRECT);
 
@@ -62,7 +65,7 @@ final class SurfaceMesher implements AutoCloseable {
 			shared = new ComputeProgram[]{
 				new ComputeProgram("fine_clear.comp", U, S),
 				new ComputeProgram("blur.comp", U, S, S, S),
-				new ComputeProgram("nets_vertices.comp", U, S, S, S, S, S),
+				new ComputeProgram("nets_vertices.comp", U, S, S, S, S, S, S, S),
 				new ComputeProgram("nets_quads.comp", U, S, S, S, S),
 				new ComputeProgram("mesh_args.comp", U, S),
 				new ComputeProgram("sheet_fill.comp", U, S, S, S),
@@ -107,12 +110,12 @@ final class SurfaceMesher implements AutoCloseable {
 		return (fineBox[3] - fineBox[0] + 1) * (fineBox[4] - fineBox[1] + 1) * (fineBox[5] - fineBox[2] + 1);
 	}
 
-	void build(Cmd cb, Desc ubo, GlBuf particles, GlBuf counters, int counterIndex, GlBuf dispatchArgs, GlBuf staticSolid,
+	void build(Cmd cb, Desc ubo, GlBuf particles, GlBuf counters, int counterIndex, GlBuf dispatchArgs, GlBuf staticSolid, GlBuf cellMix,
 		int[] fineBox, boolean fillSheets) {
 		this.buildField(cb, ubo, particles, counters, counterIndex, dispatchArgs, fineBox, fillSheets);
 		int cubeGroups = ComputeProgram.groups(cubes(fineBox), 256);
 		this.netsVertices.bind(cb, ubo, Desc.ssbo(this.densA), Desc.ssbo(this.vertexId), Desc.ssbo(this.verts), Desc.ssbo(this.meshCounters),
-			Desc.ssbo(staticSolid));
+			Desc.ssbo(staticSolid), Desc.ssbo(cellMix), Desc.ssbo(this.vertMix));
 		this.netsVertices.push(cb, this.vertexCapacity);
 		this.netsVertices.dispatch(cb, cubeGroups, 1, 1);
 		Gl.barrier(cb);
@@ -168,7 +171,7 @@ final class SurfaceMesher implements AutoCloseable {
 
 	@Override
 	public void close() {
-		for (AutoCloseable c : new AutoCloseable[]{this.accum, this.densA, this.densB, this.zb, this.vertexId, this.verts, this.quads, this.meshCounters}) {
+		for (AutoCloseable c : new AutoCloseable[]{this.accum, this.densA, this.densB, this.zb, this.vertexId, this.verts, this.vertMix, this.quads, this.meshCounters}) {
 			try {
 				c.close();
 			} catch (Exception ignored) {

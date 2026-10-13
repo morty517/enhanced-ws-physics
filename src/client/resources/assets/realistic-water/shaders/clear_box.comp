@@ -14,7 +14,9 @@ void main() {
         cellCount[i] = 0;
         cellDens[i] = 0;
         wwCount[i] = 0;
-        cellMix[i] = ivec4(0);
+        if (uniformSlot() < 0) {
+            cellMix[i] = ivec4(0);
+        }
         return;
     }
     int comp;

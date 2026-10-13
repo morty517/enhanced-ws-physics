@@ -27,6 +27,9 @@ public final class WaterRegion implements AutoCloseable {
 	static final int C_MAX_SPEED = 6;
 	static final int C_AABB = 8;
 	static final int C_AWAKE = 14;
+	/** OR of the slot bits of every live particle (p2g), see fluidSlotBit() in common.glsl. */
+	static final int C_SLOTS = 15;
+	static final int SLOT_MIXED_BIT = 0x80;
 	static final long STATS_SLOT = 64;
 	static final long ARGS_FLUID_DISPATCH = 0;
 	static final long ARGS_WW_DISPATCH = 16;
@@ -231,6 +234,10 @@ public final class WaterRegion implements AutoCloseable {
 	int lastWhitewaterCount;
 	float lastMaxSpeed;
 	private int emittedSinceReadback;
+	/** Slot mask read back from the GPU, and slots known to be arriving that the readback can't show yet. */
+	private int gpuSlots;
+	private int hintSlots;
+	private int hintUntil;
 
 	WaterRegion(int id, int res, Material material) {
 		this.id = id;
@@ -338,6 +345,7 @@ public final class WaterRegion implements AutoCloseable {
 			}
 			this.emittedSinceReadback = 0;
 			this.lastAwake = b.getInt(off + C_AWAKE * 4);
+			this.gpuSlots = b.getInt(off + C_SLOTS * 4);
 			this.lastAwakeFrame = this.slotFrame[slot];
 		}
 		this.slotHasAabb[slot] = false;
@@ -678,6 +686,41 @@ public final class WaterRegion implements AutoCloseable {
 		}
 	}
 
+	private int slotBits(int slot) {
+		return this.material.fluid() ? (slot == 0 ? 1 : slot == 1 ? 2 : slot == 2 ? 4 : SLOT_MIXED_BIT) : 1 << slot;
+	}
+
+	/** Every slot that is or may soon be in this region (GPU readback lags a few frames behind emitters and merges). */
+	int slotMask(int frame) {
+		int mask = this.gpuSlots | (frame <= this.hintUntil ? this.hintSlots : 0);
+		for (Emitter e : this.pending) {
+			mask |= this.slotBits(e.slot());
+		}
+		for (WaterRegion other : this.absorbQueue) {
+			mask |= other.slotMask(frame);
+		}
+		return mask;
+	}
+
+	void hintSlots(int bits, int frame) {
+		this.hintSlots = frame <= this.hintUntil ? this.hintSlots | bits : bits;
+		this.hintUntil = frame + Gl.FRAME_RING + 3;
+	}
+
+	/** The slot every particle has, or -1 when the region holds several materials or mixtures (the shaders' slow path). */
+	int uniformSlot(int frame, int extraBits) {
+		int mask = this.slotMask(frame) | extraBits;
+		if (mask == 0) {
+			return 0;
+		}
+		if ((mask & SLOT_MIXED_BIT) != 0 || Integer.bitCount(mask) != 1) {
+			return -1;
+		}
+		return Integer.numberOfTrailingZeros(mask);
+	}
+
+	int frameUniformSlot = 0;
+
 	boolean dormant() {
 		return this.material.granular() && this.initialized && this.lastAwake == 0 && this.lastAwakeFrame > this.wakeFrame
 			&& this.pending.isEmpty() && this.removals.isEmpty() && this.absorbQueue.isEmpty() && this.pendingShift == null
@@ -793,6 +836,7 @@ public final class WaterRegion implements AutoCloseable {
 		this.ensureCapacity(cb, incoming, numSources, incomingWhitewater);
 		Gl.barrier(cb);
 		for (WaterRegion other : this.absorbQueue) {
+			this.hintSlots(other.slotMask(frame), frame);
 			this.absorb(cb, ubo, other);
 		}
 		this.absorbQueue.clear();
@@ -802,6 +846,7 @@ public final class WaterRegion implements AutoCloseable {
 		if (steps > 0) {
 			this.counters.fill(cb, C_AABB * 4L, 12, 0xFFFFFFFF);
 			this.counters.fill(cb, (C_AABB + 3) * 4L, 12, 0);
+			this.counters.fill(cb, C_SLOTS * 4L, 4, 0);
 		}
 		Gl.barrier(cb);
 
@@ -818,6 +863,7 @@ public final class WaterRegion implements AutoCloseable {
 			}
 			List<Emitter> done = this.pending.subList(0, consumed);
 			for (Emitter e : done) {
+				this.hintSlots(this.slotBits(e.slot()), frame);
 				this.recentEmitWorld = union(this.recentEmitWorld, e.cells(this.res));
 			}
 			this.recentEmitExpiry = frame + Gl.FRAME_RING + 4;
@@ -976,7 +1022,8 @@ public final class WaterRegion implements AutoCloseable {
 		p[10].bind(cb, ubo,
 			Desc.ssbo(this.particles[src]), Desc.ssbo(this.particles[dst]), Desc.ssbo(this.counters),
 			Desc.ssbo(this.vel), Desc.ssbo(this.velOld), Desc.ssbo(this.cellFlags), Desc.ssbo(this.staticSolid),
-			Desc.ssbo(this.potential), Desc.ssbo(this.whitewater[wwDst]), Desc.ssbo(this.wwCount[wwSrc]), Desc.ssbo(this.cellMix));
+			Desc.ssbo(this.potential), Desc.ssbo(this.whitewater[wwDst]), Desc.ssbo(this.wwCount[wwSrc]),
+			Desc.ssbo(this.frameUniformSlot >= 0 ? this.cellCount : this.cellMix));
 		p[10].push(cb, C_FLUID + src, C_FLUID + dst, 0, this.seed++, C_WW + wwDst, ww ? 1 : 0);
 		p[10].dispatchIndirect(cb, this.args, ARGS_FLUID_DISPATCH);
 		Gl.barrier(cb);
