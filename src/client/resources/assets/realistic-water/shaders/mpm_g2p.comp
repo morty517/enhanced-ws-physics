@@ -79,6 +79,7 @@ struct Advected {
     mat3 F;
     float tau6[6];
     float rest;
+    float damage;
     bool asleep;
 };
 
@@ -92,6 +93,7 @@ bool advect(uint i, out Advected r) {
     r.F = mat3(1.0);
     r.tau6 = float[](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     r.rest = 0.0;
+    r.damage = 0.0;
     r.asleep = false;
     if (i >= counters[pc.a.x]) {
         return false;
@@ -106,11 +108,15 @@ bool advect(uint i, out Advected r) {
     mat3 F = valid ? LOAD_MAT(stateSrc, si + 9) : mat3(1.0);
     float tau6[6] = float[](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     float rest = 0.0;
+    int slot = grainSlot(p.vel.w);
+    bool broken = grainBroken(p.vel.w);
+    float damage = broken ? 1.0 : 0.0;
     if (valid) {
         for (int k = 0; k < 6; k++) {
             tau6[k] = stateSrc[si + STATE_TAU + k];
         }
         rest = stateSrc[si + STATE_REST];
+        damage = clamp(stateSrc[si + STATE_DAMAGE], 0.0, 1.0);
     }
     vec3 v;
     mat3 C = mat3(0.0);
@@ -144,8 +150,20 @@ bool advect(uint i, out Advected r) {
             C = mat3(0.0);
         } else {
             mat3 tau;
-            vec4 gm = G.grainA[grainSlot(p.vel.w)];
-            F = projectSand((mat3(1.0) + DT * C) * F, C[0][0] + C[1][1] + C[2][2], gm.x, gm.y, tau);
+            vec4 gm = G.grainA[slot];
+            vec4 gc = G.grainC[slot];
+            float squeeze = C[0][0] + C[1][1] + C[2][2];
+            // Breakable materials (toughness > 0) lose their cohesion as they yield; damage only grows, except that
+            // materials that heal (snow, clay) knit back together while being pressed.
+            float cohesion = gc.x > 0.0 ? gm.y * (1.0 - damage) : gm.y;
+            float plastic;
+            F = projectSand((mat3(1.0) + DT * C) * F, squeeze, gm.x, cohesion, tau, plastic);
+            if (gc.x > 0.0) {
+                damage = min(damage + plastic / gc.x, 1.0);
+                if (gc.y > 0.0 && squeeze < 0.0) {
+                    damage = max(damage + gc.y * squeeze * DT, 0.0);
+                }
+            }
             tau6 = float[](tau[0][0], tau[1][1], tau[2][2], tau[1][0], tau[2][0], tau[2][1]);
             spread = clamp(sqrt(1.0 / max(density * MPM_VOLUME, 0.05)), 1.0, 3.0);
         }
@@ -175,7 +193,9 @@ bool advect(uint i, out Advected r) {
     r.x = xn;
     r.v = v;
     r.spread = spread;
-    r.tag = p.vel.w;
+    bool nowBroken = damage >= 0.999 ? true : (damage < 0.5 ? false : broken);
+    r.tag = grainTag(slot, nowBroken, grainLook(p.vel.w));
+    r.damage = damage;
     r.C = C;
     r.F = F;
     r.tau6 = tau6;
@@ -208,6 +228,7 @@ void main() {
             stateDst[so + STATE_TAU + k] = r.tau6[k];
         }
         stateDst[so + STATE_REST] = r.rest;
+        stateDst[so + STATE_DAMAGE] = r.damage;
     }
     compactBounds(wrote, uvec3(ivec3(floor(r.x)) + AABB_BIAS));
 }

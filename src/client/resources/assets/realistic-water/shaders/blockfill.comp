@@ -10,6 +10,7 @@ layout(std430, binding = 4) readonly buffer Grid { vec4 grid[]; };
 layout(std430, binding = 4) readonly buffer Vel { float vel[]; };
 #endif
 layout(std430, binding = 5) readonly buffer Mix { ivec4 cellMix[]; };
+#include "mixgrid.glsl"
 // Lava: particles that turned to stone per cell (react.comp); read when G.mixInfo.z is set.
 layout(std430, binding = 6) readonly buffer Solidify { int solidify[]; };
 layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
@@ -41,6 +42,9 @@ void main() {
     float sum = 0.0;
     float speed = 0.0;
     vec4 mixSum = vec4(0.0);
+#ifdef MPM
+    float grains[8] = float[](0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+#endif
     float solid = 0.0;
     bool lava = G.mixInfo.z > 0.5;
     for (int k = 0; k < res * res * res; k++) {
@@ -60,7 +64,13 @@ void main() {
         } else {
             sum += float(cellCount[i]);
             if (uniformSlot() < 0) {
+#ifdef MPM
+                for (int s = 0; s < 8; s++) {
+                    grains[s] += float(grainCount(cellMix[i], s));
+                }
+#else
                 mixSum += mixSums(cellMix[i]);
+#endif
             }
             if ((f & 0xFFu) == CELL_FLUID) {
                 speed = max(speed, cellSpeed(c));
@@ -70,7 +80,17 @@ void main() {
     uint full = uint(clamp(sum / (G.simA.y * float(res * res * res)), 0.0, 1.0) * 255.0 + 0.5);
     uint fast = uint(clamp(speed / float(res) * 16.0, 0.0, 255.0));
     // Bits 16..23: the material slot most of this block is made of (decides which block the host writes).
+#ifdef MPM
+    int best = 0;
+    for (int s = 1; s < 8; s++) {
+        if (grains[s] > grains[best]) {
+            best = s;
+        }
+    }
+    uint slot = uint(uniformSlot() >= 0 ? uniformSlot() : best);
+#else
     uint slot = uint(uniformSlot() >= 0 ? uniformSlot() : dominantSlot(mixSum));
+#endif
     // Bits 24..31: how much of the block (fraction of a full block's particles) solidified since the last readback.
     uint stone = uint(clamp(solid / (G.simA.y * float(res * res * res)), 0.0, 1.0) * 255.0 + 0.5);
     fill[t] = full | (fast << 8) | (slot << 16) | (stone << 24);

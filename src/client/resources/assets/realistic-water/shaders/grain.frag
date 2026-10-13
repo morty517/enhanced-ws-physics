@@ -23,6 +23,8 @@ void main() {
     gl_FragDepth = clip.z / clip.w * 0.5 + 0.5; // GL: NDC z [-1,1] -> depth [0,1]
     uint s = vSeed;
     vec3 nWorld = normalize(mat3(G.invView) * vNormal);
-    vec3 albedo = sandAlbedo(vSlot, vWorld, nWorld, 0.0) * (0.92 + 0.2 * rand(s));
+    uint tint = uint(G.grainB[vSlot].z);
+    vec3 tintRgb = vec3((tint >> 16) & 0xFFu, (tint >> 8) & 0xFFu, tint & 0xFFu) / 255.0;
+    vec3 albedo = sandAlbedo(vSlot, vWorld, nWorld, 0.0) * tintRgb * (0.92 + 0.2 * rand(s));
     outColor = vec4(sandLight(nWorld, albedo, vShade, G.grainA[vSlot].w), 1.0);
 }

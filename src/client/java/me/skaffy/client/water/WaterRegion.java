@@ -29,7 +29,7 @@ public final class WaterRegion implements AutoCloseable {
 	static final int C_AWAKE = 14;
 	/** OR of the slot bits of every live particle (p2g), see fluidSlotBit() in common.glsl. */
 	static final int C_SLOTS = 15;
-	static final int SLOT_MIXED_BIT = 0x80;
+	static final int SLOT_MIXED_BIT = 0x100;
 	static final long STATS_SLOT = 64;
 	static final long ARGS_FLUID_DISPATCH = 0;
 	static final long ARGS_WW_DISPATCH = 16;

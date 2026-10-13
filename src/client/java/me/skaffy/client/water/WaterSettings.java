@@ -145,11 +145,47 @@ public final class WaterSettings {
 
 	// Snow: cohesive and steep, holds walls and clumps; light, so water pushes it around easily.
 	public static float snowFrictionAngle = 35.0F;
-	public static float snowCohesion = 0.06F;
+	public static float snowCohesion = 0.08F;
 	public static float snowGrainSize = 0.012F;
 	public static int snowGrainsPerParticle = 24;
 	public static float snowBrightness = 1.0F;
 	public static float snowWaterDrag = 9.0F;
+	/** Breakable materials: plastic strain that fully breaks a bit of material (0 = never breaks, just flows). */
+	public static float snowToughness = 0.5F;
+	/** How fast pressed material knits back together (per unit of compression); snow packs into snowballs. */
+	public static float snowHeal = 3.0F;
+
+	// Breakable solids: stand as a block, crumble when dropped or hit (see toughness above).
+	public static float sandstoneFrictionAngle = 40.0F;
+	public static float sandstoneCohesion = 0.35F;
+	public static float sandstoneToughness = 0.12F;
+	public static float sandstoneGrainSize = 0.013F;
+	public static int sandstoneGrainsPerParticle = 20;
+	public static float sandstoneWaterDrag = 3.0F;
+
+	public static float dirtFrictionAngle = 35.0F;
+	public static float dirtCohesion = 0.15F;
+	public static float dirtToughness = 0.5F;
+	public static float dirtGrainSize = 0.016F;
+	public static int dirtGrainsPerParticle = 16;
+	public static float dirtWaterDrag = 4.0F;
+
+	public static float clayFrictionAngle = 22.0F;
+	public static float clayCohesion = 0.25F;
+	public static float clayToughness = 2.5F;
+	public static float clayHeal = 1.0F;
+	public static float clayGrainSize = 0.013F;
+	public static int clayGrainsPerParticle = 24;
+	public static float clayWaterDrag = 3.0F;
+
+	public static float curdFrictionAngle = 25.0F;
+	public static float curdCohesion = 0.12F;
+	public static float curdToughness = 1.0F;
+	public static float curdHeal = 0.5F;
+	public static float curdGrainSize = 0.02F;
+	public static int curdGrainsPerParticle = 14;
+	public static float curdBrightness = 1.05F;
+	public static float curdWaterDrag = 5.0F;
 
 	// Lava: its own simulation. Opaque, glowing, lazy and sticky; solidifies where it touches water.
 	public static float lavaScatterR = 1.0F;

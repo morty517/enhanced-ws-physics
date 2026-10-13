@@ -42,6 +42,10 @@ public final class ModContent {
 		registerGranular(Material.RED_SAND, MapColor.COLOR_ORANGE, SoundType.SAND, NoteBlockInstrument.SNARE);
 		registerGranular(Material.GRAVEL, MapColor.STONE, SoundType.GRAVEL, NoteBlockInstrument.SNARE);
 		registerGranular(Material.SNOW, MapColor.SNOW, SoundType.SNOW, NoteBlockInstrument.HARP);
+		registerGranular(Material.SANDSTONE, MapColor.SAND, SoundType.STONE, NoteBlockInstrument.BASEDRUM);
+		registerGranular(Material.DIRT, MapColor.DIRT, SoundType.GRAVEL, NoteBlockInstrument.HARP);
+		registerGranular(Material.CLAY, MapColor.CLAY, SoundType.GRAVEL, NoteBlockInstrument.FLUTE);
+		registerGranular(Material.SUSPICIOUS_CURD, MapColor.QUARTZ, SoundType.SLIME_BLOCK, NoteBlockInstrument.BANJO);
 	}
 
 	public static final FlowingFluid REALISTIC_WATER = SOURCES.get(Material.WATER);
@@ -135,6 +139,10 @@ public final class ModContent {
 			entries.addAfter(Items.RED_SAND, item(Material.RED_SAND));
 			entries.addAfter(Items.GRAVEL, item(Material.GRAVEL));
 			entries.addAfter(Items.SNOW_BLOCK, item(Material.SNOW));
+			entries.addAfter(Items.SANDSTONE, item(Material.SANDSTONE));
+			entries.addAfter(Items.DIRT, item(Material.DIRT));
+			entries.addAfter(Items.CLAY, item(Material.CLAY));
+			entries.addAfter(item(Material.CLAY), item(Material.SUSPICIOUS_CURD));
 		});
 	}
 }

@@ -52,8 +52,8 @@ import org.jetbrains.annotations.Nullable;
 
 public final class WaterWorld {
 	private static final WaterWorld INSTANCE = new WaterWorld();
-	static final int UBO_SLOT = 4352;
-	static final int UBO_SIZE = 4256;
+	static final int UBO_SLOT = 4608;
+	static final int UBO_SIZE = 4512;
 	static final float PARTICLES_PER_CELL = 8.0F;
 	static final float SAND_POISSON = 0.3F;
 
@@ -1108,54 +1108,49 @@ public final class WaterWorld {
 				lava ? WaterSettings.lavaStrandedTime : sus ? WaterSettings.suspiciousStrandedTime : WaterSettings.strandedTime,
 				lava ? WaterSettings.lavaEmission : 0.0F, lava ? WaterSettings.lavaViscosity : 0.0F);
 
-			Material g = Material.bySlot(Material.SAND, s);
-			double phi = Math.toRadians(granularFrictionAngle(g));
-			float alpha = (float) (Math.sqrt(2.0 / 3.0) * 2.0 * Math.sin(phi) / (3.0 - Math.sin(phi)));
-			float size = switch (g) {
-				case GRAVEL -> WaterSettings.gravelGrainSize;
-				case SNOW -> WaterSettings.snowGrainSize;
-				default -> WaterSettings.sandGrainSize;
-			};
-			float brightness = switch (g) {
-				case GRAVEL -> WaterSettings.gravelBrightness;
-				case SNOW -> WaterSettings.snowBrightness;
-				default -> WaterSettings.sandBrightness;
-			};
-			float drag = switch (g) {
-				case GRAVEL -> WaterSettings.gravelWaterDrag;
-				case SNOW -> WaterSettings.snowWaterDrag;
-				default -> WaterSettings.sandWaterDrag;
-			};
-			putFloats(b, o + 192 + s * 16, alpha, granularCohesion(g), size, brightness);
-			putFloats(b, o + 256 + s * 16, drag, grainsPerParticle(g), 0.0F, 0.0F);
 		}
-		putFloats(b, o + 320, WaterSettings.fluidMixRate, uniformSlot, fluidBase == Material.LAVA ? 1.0F : 0.0F, WaterSettings.lavaCrust);
+		for (int s = 0; s < Material.GRAIN_SLOTS; s++) {
+			GrainParams g = grain(Material.bySlot(Material.SAND, s));
+			double phi = Math.toRadians(g.frictionAngle());
+			float alpha = (float) (Math.sqrt(2.0 / 3.0) * 2.0 * Math.sin(phi) / (3.0 - Math.sin(phi)));
+			putFloats(b, o + 192 + s * 16, alpha, g.cohesion(), g.grainSize(), g.brightness());
+			putFloats(b, o + 320 + s * 16, g.waterDrag(), g.grainsPerParticle(), g.tint(), 0.0F);
+			putFloats(b, o + 448 + s * 16, g.toughness(), g.heal(), 0.0F, 0.0F);
+		}
+		putFloats(b, o + 576, WaterSettings.fluidMixRate, uniformSlot, fluidBase == Material.LAVA ? 1.0F : 0.0F, WaterSettings.lavaCrust);
+	}
+
+	/** What a granular material is like (all from WaterSettings, so /water set tunes them live). */
+	private record GrainParams(float frictionAngle, float cohesion, float grainSize, int grainsPerParticle, float brightness, float waterDrag,
+		float toughness, float heal, int tint) {
+	}
+
+	private static GrainParams grain(Material m) {
+		return switch (m) {
+			case RED_SAND -> new GrainParams(WaterSettings.redSandFrictionAngle, WaterSettings.redSandCohesion, WaterSettings.sandGrainSize,
+				WaterSettings.sandGrainsPerParticle, WaterSettings.sandBrightness, WaterSettings.sandWaterDrag, 0.0F, 0.0F, 0xFFFFFF);
+			case GRAVEL -> new GrainParams(WaterSettings.gravelFrictionAngle, WaterSettings.gravelCohesion, WaterSettings.gravelGrainSize,
+				WaterSettings.gravelGrainsPerParticle, WaterSettings.gravelBrightness, WaterSettings.gravelWaterDrag, 0.0F, 0.0F, 0xFFFFFF);
+			case SNOW -> new GrainParams(WaterSettings.snowFrictionAngle, WaterSettings.snowCohesion, WaterSettings.snowGrainSize,
+				WaterSettings.snowGrainsPerParticle, WaterSettings.snowBrightness, WaterSettings.snowWaterDrag, WaterSettings.snowToughness,
+				WaterSettings.snowHeal, 0xFFFFFF);
+			case SANDSTONE -> new GrainParams(WaterSettings.sandstoneFrictionAngle, WaterSettings.sandstoneCohesion, WaterSettings.sandstoneGrainSize,
+				WaterSettings.sandstoneGrainsPerParticle, WaterSettings.sandBrightness, WaterSettings.sandstoneWaterDrag, WaterSettings.sandstoneToughness,
+				0.0F, 0xFFFFFF);
+			case DIRT -> new GrainParams(WaterSettings.dirtFrictionAngle, WaterSettings.dirtCohesion, WaterSettings.dirtGrainSize,
+				WaterSettings.dirtGrainsPerParticle, 1.0F, WaterSettings.dirtWaterDrag, WaterSettings.dirtToughness, 0.0F, 0xFFFFFF);
+			case CLAY -> new GrainParams(WaterSettings.clayFrictionAngle, WaterSettings.clayCohesion, WaterSettings.clayGrainSize,
+				WaterSettings.clayGrainsPerParticle, 1.0F, WaterSettings.clayWaterDrag, WaterSettings.clayToughness, WaterSettings.clayHeal, 0xFFFFFF);
+			case SUSPICIOUS_CURD -> new GrainParams(WaterSettings.curdFrictionAngle, WaterSettings.curdCohesion, WaterSettings.curdGrainSize,
+				WaterSettings.curdGrainsPerParticle, WaterSettings.curdBrightness, WaterSettings.curdWaterDrag, WaterSettings.curdToughness,
+				WaterSettings.curdHeal, 0xFFF3DA);
+			default -> new GrainParams(WaterSettings.sandFrictionAngle, WaterSettings.sandCohesion, WaterSettings.sandGrainSize,
+				WaterSettings.sandGrainsPerParticle, WaterSettings.sandBrightness, WaterSettings.sandWaterDrag, 0.0F, 0.0F, 0xFFFFFF);
+		};
 	}
 
 	private static int grainsPerParticle(Material m) {
-		return Math.max(1, switch (m) {
-			case GRAVEL -> WaterSettings.gravelGrainsPerParticle;
-			case SNOW -> WaterSettings.snowGrainsPerParticle;
-			default -> WaterSettings.sandGrainsPerParticle;
-		});
-	}
-
-	private static float granularFrictionAngle(Material m) {
-		return switch (m) {
-			case RED_SAND -> WaterSettings.redSandFrictionAngle;
-			case GRAVEL -> WaterSettings.gravelFrictionAngle;
-			case SNOW -> WaterSettings.snowFrictionAngle;
-			default -> WaterSettings.sandFrictionAngle;
-		};
-	}
-
-	private static float granularCohesion(Material m) {
-		return switch (m) {
-			case RED_SAND -> WaterSettings.redSandCohesion;
-			case GRAVEL -> WaterSettings.gravelCohesion;
-			case SNOW -> WaterSettings.snowCohesion;
-			default -> WaterSettings.sandCohesion;
-		};
+		return Math.max(1, grain(m).grainsPerParticle());
 	}
 
 	private static float wrap(double v) {

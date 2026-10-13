@@ -60,8 +60,9 @@ layout(std140, binding = 0) uniform Globals {
     vec4 fluidA[4]; // absorb rgb, FLIP ratio for this step
     vec4 fluidB[4]; // scatter rgb, scatter density
     vec4 fluidC[4]; // film friction, stranded time, glow (emission), viscous damping (1/s, horizontal)
-    vec4 grainA[4]; // friction alpha, cohesion, grain radius, brightness
-    vec4 grainB[4]; // water drag rate, grains drawn per particle
+    vec4 grainA[8]; // friction alpha, cohesion, grain radius, brightness
+    vec4 grainB[8]; // water drag rate, grains drawn per particle, tint (0xRRGGBB as a float)
+    vec4 grainC[8]; // toughness (plastic strain to break, 0 = never breaks), healing under compression (1/strain)
     vec4 mixInfo;   // x = fluid mixing rate (1/s), y = uniform slot or -1, z = 1 for lava (solidifies), w = lava crust coverage
 } G;
 
@@ -98,7 +99,7 @@ const float FP_SCALE = 65536.0;
 // G.mixInfo.y is the slot every particle of the region has, or -1 when the region holds a mixture (CPU-side fast path).
 const float MIX_FP = 256.0;
 #define C_SLOTS 15
-#define SLOT_MIXED_BIT 0x80u
+#define SLOT_MIXED_BIT 0x100u
 
 int uniformSlot() {
     return int(G.mixInfo.y);
@@ -143,8 +144,21 @@ uint fluidSlotBit(float code) {
     return c == 0.0 ? 1u : (c == 1023.0 ? 2u : (c == 1023.0 * 1024.0 ? 4u : SLOT_MIXED_BIT));
 }
 
+// Grain tag = slot + (broken ? 0.5 : 0) + look in [0.001, 0.499): the broken bit survives region merges, unlike the MPM state.
 int grainSlot(float tag) {
-    return clamp(int(floor(tag)), 0, 3);
+    return clamp(int(floor(tag)), 0, 7);
+}
+
+bool grainBroken(float tag) {
+    return fract(tag) >= 0.5;
+}
+
+float grainTag(int slot, bool broken, float look) {
+    return float(slot) + (broken ? 0.5 : 0.0) + 0.001 + 0.497 * clamp(look, 0.0, 1.0);
+}
+
+float grainLook(float tag) {
+    return (fract(tag) - (grainBroken(tag) ? 0.5 : 0.0) - 0.001) / 0.497;
 }
 
 int dominantSlot(vec4 w) {

@@ -50,7 +50,7 @@ final class FlowSounds {
 						continue;
 					}
 					candidates.add(new int[]{f.x() + x, f.y() + y, f.z() + z});
-					grainSounds.add(switch (Material.bySlot(base, f.slot(i))) { case GRAVEL -> SoundType.GRAVEL; case SNOW -> SoundType.SNOW; default -> SoundType.SAND; });
+					grainSounds.add(Material.bySlot(base, f.slot(i)).block().defaultBlockState().getSoundType());
 					speeds.add(speed);
 					weight += Math.min(speed / 1.5F, 2.0F);
 					if (speed >= fast) {

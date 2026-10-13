@@ -35,6 +35,9 @@ public final class SelfTest {
 	private static final boolean PIT = "pit".equals(System.getProperty("realisticwater.selftest.scene"));
 	/** -Drealisticwater.selftest.scene=mix: water and milk dropped against each other, gravel dropped onto sand and red sand. */
 	private static final boolean MIX = "mix".equals(System.getProperty("realisticwater.selftest.scene"));
+	/** -Drealisticwater.selftest.scene=solids: breakable materials resting on the ground, then the same ones dropped from height. */
+	private static final boolean SOLIDS = "solids".equals(System.getProperty("realisticwater.selftest.scene"));
+	private static final Material[] SOLID_MATERIALS = {Material.SANDSTONE, Material.DIRT, Material.CLAY, Material.SUSPICIOUS_CURD, Material.SNOW};
 	private static final float PITCH = PIT ? 62.0F : 25.0F;
 	private static boolean splashShot;
 	private static net.minecraft.core.BlockPos pitOrigin;
@@ -118,6 +121,10 @@ public final class SelfTest {
 					double size = Double.parseDouble(System.getProperty("realisticwater.selftest.waterSize", PIT ? "3.5" : "2"));
 					if (PIT) {
 						dropAt(mc, Material.WATER, size, pitCenter(mc).add(0.0, 2.5, 0.0));
+					} else if (SOLIDS) {
+						for (int k = 0; k < SOLID_MATERIALS.length; k++) {
+							dropAt(mc, SOLID_MATERIALS[k], 1.0, groundAhead(mc, 7.5, (k - 2) * 1.8).add(0.0, 0.52, 0.0));
+						}
 					} else if (MIX) {
 						drop(mc, Material.WATER, size, -1.05);
 						Material second = Material.byId(System.getProperty("realisticwater.selftest.second", "milk"));
@@ -158,6 +165,10 @@ public final class SelfTest {
 					if (PIT) {
 						Material into = Material.byId(System.getProperty("realisticwater.selftest.pitDrop", "sand"));
 						dropAt(mc, into != null ? into : Material.SAND, 1.5, pitCenter(mc).add(0.0, 3.5, 0.0));
+					} else if (SOLIDS) {
+						for (int k = 0; k < SOLID_MATERIALS.length; k++) {
+							dropAt(mc, SOLID_MATERIALS[k], 1.0, groundAhead(mc, 3.5, (k - 2) * 1.6).add(0.0, 6.0, 0.0));
+						}
 					} else if (MIX) {
 						drop(mc, Material.SAND, 1.5, 0.8, 0.0);
 						drop(mc, Material.RED_SAND, 1.5, -0.8, 0.0);
@@ -211,6 +222,12 @@ public final class SelfTest {
 			lastLoggedFrame = f;
 			RealisticWater.LOGGER.warn("[selftest] frame {} | {}", f, WaterWorld.get().statsLine());
 		}
+	}
+
+	/** A point on the ground (the player's feet level) {@code forward} blocks ahead and {@code sideways} to the side. */
+	private static Vec3 groundAhead(Minecraft mc, double forward, double sideways) {
+		Vec3 feet = mc.player.position();
+		return new Vec3(Math.floor(feet.x) + 0.5 + sideways, Math.floor(feet.y), Math.floor(feet.z) + 0.5 + forward);
 	}
 
 	private static Vec3 pitCenter(Minecraft mc) {

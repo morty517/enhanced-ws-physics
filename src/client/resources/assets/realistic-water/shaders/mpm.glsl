@@ -31,6 +31,7 @@ Stencil stencil(vec3 x) {
 #define STATE_STRIDE 28
 #define STATE_TAU 18
 #define STATE_REST 24
+#define STATE_DAMAGE 25
 #define LOAD_MAT(buf, o) mat3(buf[o], buf[o + 1], buf[o + 2], buf[o + 3], buf[o + 4], buf[o + 5], buf[o + 6], buf[o + 7], buf[o + 8])
 
 void jacobi(inout mat3 A, inout mat3 V, int p, int q) {
@@ -78,8 +79,10 @@ mat3 diag3(vec3 d) {
     return mat3(d.x, 0.0, 0.0, 0.0, d.y, 0.0, 0.0, 0.0, d.z);
 }
 
-// alpha / cohesion: the particle's material (grainA[slot].xy).
-mat3 projectSand(mat3 F, float squeeze, float alpha, float cohesion, out mat3 tau) {
+// alpha / cohesion: the particle's material (grainA[slot].xy), cohesion already softened by damage.
+// plastic: how far this step had to pull F back onto the yield surface (strain), what breaks cohesive materials.
+mat3 projectSand(mat3 F, float squeeze, float alpha, float cohesion, out mat3 tau, out float plastic) {
+    plastic = 0.0;
     mat3 U;
     vec3 S;
     mat3 V;
@@ -92,12 +95,15 @@ mat3 projectSand(mat3 F, float squeeze, float alpha, float cohesion, out mat3 ta
     }
     float tr = e.x + e.y + e.z - cohesion;
     if (tr >= 0.0) {
+        // Pulled apart beyond what cohesion holds: cracks open, the most damaging way to yield.
+        plastic = 3.0 * tr;
         S = vec3(exp(cohesion / 3.0));
     } else {
         vec3 eh = e - (tr + cohesion) / 3.0;
         float en = length(eh);
         float dg = en + (3.0 * MPM_LAMBDA + 2.0 * MPM_MU) / (2.0 * MPM_MU) * tr * alpha;
         if (dg > 0.0 && en > 1e-12) {
+            plastic = dg * (tr > -0.5 * cohesion ? 1.0 : 0.25); // shear while squeezed hard barely cracks it
             S = exp(e - dg * eh / en);
         }
     }

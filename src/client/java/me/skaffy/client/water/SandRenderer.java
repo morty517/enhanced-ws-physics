@@ -23,6 +23,10 @@ final class SandRenderer implements AutoCloseable {
 			case RED_SAND -> "red_sand";
 			case GRAVEL -> "gravel";
 			case SNOW -> "snow";
+			case SANDSTONE -> "sandstone";
+			case DIRT -> "dirt";
+			case CLAY -> "clay";
+			case SUSPICIOUS_CURD -> "white_concrete_powder";
 			default -> "sand";
 		} + ".png");
 	}
@@ -45,18 +49,19 @@ final class SandRenderer implements AutoCloseable {
 	private record Image(int w, int h, int average, int[] argb) {
 	}
 
-	/** Layout: 4 header ints per slot (width, height, average, texel offset in ints), then the texels of every slot. */
+	/** Layout: 4 header ints per material slot (width, height, average, texel offset in ints), then the texels of every slot. */
 	private static GlBuf loadTextures() {
-		Image[] images = new Image[4];
-		int total = 16;
-		for (int s = 0; s < 4; s++) {
+		int slots = Material.GRAIN_SLOTS;
+		Image[] images = new Image[slots];
+		int total = 4 * slots;
+		for (int s = 0; s < slots; s++) {
 			images[s] = loadTexture(textureFor(Material.bySlot(Material.SAND, s)));
 			total += images[s].argb().length;
 		}
 		GlBuf buf = GlBuf.upload(total * 4L, GlBuf.STORAGE);
 		ByteBuffer m = buf.mapped();
-		int offset = 16;
-		for (int s = 0; s < 4; s++) {
+		int offset = 4 * slots;
+		for (int s = 0; s < slots; s++) {
 			Image img = images[s];
 			m.putInt(s * 16, img.w()).putInt(s * 16 + 4, img.h()).putInt(s * 16 + 8, img.average()).putInt(s * 16 + 12, offset);
 			for (int i = 0; i < img.argb().length; i++) {

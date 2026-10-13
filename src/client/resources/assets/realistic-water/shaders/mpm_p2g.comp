@@ -65,9 +65,7 @@ uint body() {
         atomicAdd(cellCount[ci], 1);
         if (uniformSlot() < 0) {
             atomicAdd(cellMix[4 * ci], 1);
-            if (slot > 0) {
-                atomicAdd(cellMix[4 * ci + slot], int(MIX_FP));
-            }
+            atomicAdd(cellMix[4 * ci + 1 + slot / 4], 1 << (8 * (slot & 3)));
         }
     }
     return bits;

@@ -27,3 +27,34 @@ vec4 mixAt(vec3 x) {
     }
     return normalizeMix(s);
 }
+
+// Granular regions: cellMix y = grain counts of slots 0..3, z = slots 4..7, 8 bits each.
+uint grainCount(ivec4 m, int slot) {
+    uint w = uint(slot < 4 ? m.y : m.z);
+    return (w >> (8u * uint(slot & 3))) & 0xFFu;
+}
+
+// Water drag of the grains around a cell: count-weighted mean of their materials' rates.
+float grainDragAt(ivec3 c) {
+    if (uniformSlot() >= 0) {
+        return G.grainB[uniformSlot()].x;
+    }
+    float n = 0.0;
+    float d = 0.0;
+    for (int k = 0; k < 27 && (k == 0 || n == 0.0 || k < 7); k++) {
+        // own cell first, then its 6 neighbours, then the rest only if still empty
+        ivec3 o = k == 0 ? ivec3(0) : (k < 7 ? ivec3(k == 1 ? 1 : (k == 2 ? -1 : 0), k == 3 ? 1 : (k == 4 ? -1 : 0), k == 5 ? 1 : (k == 6 ? -1 : 0))
+            : ivec3(k % 3, (k / 3) % 3, k / 9) - 1);
+        ivec3 q = c + o;
+        if (!inBox(q)) {
+            continue;
+        }
+        ivec4 m = cellMix[cellIndex(q)];
+        for (int s = 0; s < 8; s++) {
+            float cnt = float(grainCount(m, s));
+            n += cnt;
+            d += cnt * G.grainB[s].x;
+        }
+    }
+    return n > 0.0 ? d / n : G.grainB[0].x;
+}

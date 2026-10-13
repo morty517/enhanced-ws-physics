@@ -56,7 +56,10 @@ Java 21 is enough to run Gradle (Loom 1.14).
 - Lava: its own glowing, viscous simulation (`lavaViscosity`, `lavaCrust`, `lavaEmission`). Where lava and water overlap
   they react (`react.comp`): lava solidifies and the host turns blocks with enough of it into cobblestone or obsidian, water
   boils off as steam. Synced lava blocks give light 15 and burn like vanilla lava.
-- Granular: sand, red sand, gravel, snow (cohesive). They share one MPM simulation; each grain keeps its own friction, cohesion, look and
+- Breakable solids: sandstone, dirt, clay, suspicious curd (and snow). Each grain keeps a damage value (MPM state, plus a
+  "broken" bit in its tag): cohesion fades as the material yields, mostly under tension, so a block stands on its own but
+  cracks and crumbles when it lands hard (`<material>Toughness`). Snow and clay knit back together when pressed (`*Heal`).
+- Granular: sand, red sand, gravel, snow (cohesive) and the breakable solids. They share one MPM simulation (8 slots); each grain keeps its own friction, cohesion, look and
   water drag, so piles of different materials stack and push each other.
 - Granular materials and fluids are coupled (grains displace water, water drags and lifts grains).
 - Regions made of a single material skip all mixture work (the slot mask is read back from the GPU), so plain water costs

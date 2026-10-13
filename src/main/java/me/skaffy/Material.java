@@ -24,7 +24,15 @@ public enum Material {
 	/** Cohesive, packs and holds steep walls. */
 	SNOW(Kind.GRANULAR, "snow"),
 	/** Its own simulation (doesn't mix with water): glows, flows lazily, turns into stone where it meets water. */
-	LAVA(Kind.FLUID, "lava");
+	LAVA(Kind.FLUID, "lava"),
+	/** Holds together like a block until it is dropped or hit hard, then crumbles into sand-like grains. */
+	SANDSTONE(Kind.GRANULAR, "sandstone"),
+	/** Holds its shape, breaks into clumps on impact. */
+	DIRT(Kind.GRANULAR, "dirt"),
+	/** Soft and sticky: squashes a lot before it breaks, and pressed bits stick back together. */
+	CLAY(Kind.GRANULAR, "clay"),
+	/** Suspicious curd. Lumpy, soft, squishy. Do not ask. */
+	SUSPICIOUS_CURD(Kind.GRANULAR, "suspicious_curd");
 
 	public enum Kind { FLUID, GRANULAR }
 
@@ -70,10 +78,16 @@ public enum Material {
 			case MILK, RED_SAND -> 1;
 			case SUSPICIOUS_MILK, GRAVEL -> 2;
 			case SNOW -> 3;
+			case SANDSTONE -> 4;
+			case DIRT -> 5;
+			case CLAY -> 6;
+			case SUSPICIOUS_CURD -> 7;
 		};
 	}
 
+	/** Fluid groups use slots 0..3, the granular group 0..7. */
 	public static final int SLOTS = 4;
+	public static final int GRAIN_SLOTS = 8;
 
 	/** The material of {@code base}'s group in {@code slot}, or {@code base} itself when the group has no such slot. */
 	public static Material bySlot(Material base, int slot) {

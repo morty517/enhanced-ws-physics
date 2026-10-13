@@ -10,5 +10,9 @@
   "item.realistic-water.realistic_suspicious_milk_bucket": "Bucket of Suspicious Milk",
   "block.realistic-water.realistic_lava": "Realistic Lava",
   "item.realistic-water.realistic_lava_bucket": "Bucket of Realistic Lava",
-  "block.realistic-water.realistic_snow": "Realistic Snow"
+  "block.realistic-water.realistic_snow": "Realistic Snow",
+  "block.realistic-water.realistic_sandstone": "Realistic Sandstone",
+  "block.realistic-water.realistic_dirt": "Realistic Dirt",
+  "block.realistic-water.realistic_clay": "Realistic Clay",
+  "block.realistic-water.realistic_suspicious_curd": "Suspicious Curd"
 }
