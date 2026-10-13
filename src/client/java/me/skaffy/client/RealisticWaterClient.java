@@ -29,6 +29,7 @@ public class RealisticWaterClient implements ClientModInitializer {
 		ClientChunkEvents.CHUNK_UNLOAD.register(water::onChunkUnload);
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> water.clear());
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> water.shutdown());
+		me.skaffy.client.water.Grabber.register();
 		SelfTest.init();
 	}
 

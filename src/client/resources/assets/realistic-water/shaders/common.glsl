@@ -64,6 +64,8 @@ layout(std140, binding = 0) uniform Globals {
     vec4 grainB[8]; // water drag rate, grains drawn per particle, tint (0xRRGGBB as a float)
     vec4 grainC[8]; // toughness (plastic strain to break, 0 = never breaks), healing under compression (1/strain)
     vec4 mixInfo;   // x = fluid mixing rate (1/s), y = uniform slot or -1, z = 1 for lava (solidifies), w = lava crust coverage
+    vec4 grabA;     // grab tool: centre (cells), radius (cells)
+    vec4 grabB;     // grab tool: cursor velocity (cells/s), w = 1 while held
 } G;
 
 bool isSand() {
@@ -184,6 +186,21 @@ vec4 mixFluidB(vec4 w) {
 // Summed weights (slot0..3) of a cellMix entry.
 vec4 mixSums(ivec4 m) {
     return vec4(float(m.x) * MIX_FP - float(m.y) - float(m.z) - float(m.w), float(m.y), float(m.z), float(m.w));
+}
+
+// ---- Grab tool: material near the cursor's grab point follows it (and keeps its speed when let go, so it can be thrown).
+float grabWeight(vec3 x) {
+    if (G.grabB.w < 0.5) {
+        return 0.0;
+    }
+    float r = length(G.grabA.xyz - x);
+    return 1.0 - smoothstep(0.75 * G.grabA.w, G.grabA.w, r);
+}
+
+vec3 applyGrab(vec3 x, vec3 v, float w) {
+    // Move with the cursor; a gentle pull towards the grab point keeps the piece from drifting off without crushing it.
+    vec3 want = G.grabB.xyz + (G.grabA.xyz - x) * 2.0;
+    return mix(v, want, w * (1.0 - exp(-30.0 * DT)));
 }
 
 vec2 signNotZero(vec2 v) {

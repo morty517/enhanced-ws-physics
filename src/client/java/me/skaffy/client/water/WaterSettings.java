@@ -164,8 +164,8 @@ public final class WaterSettings {
 	public static float sandstoneWaterDrag = 3.0F;
 
 	public static float dirtFrictionAngle = 35.0F;
-	public static float dirtCohesion = 0.15F;
-	public static float dirtToughness = 0.5F;
+	public static float dirtCohesion = 0.4F;
+	public static float dirtToughness = 0.2F;
 	public static float dirtGrainSize = 0.016F;
 	public static int dirtGrainsPerParticle = 16;
 	public static float dirtWaterDrag = 4.0F;
@@ -179,8 +179,8 @@ public final class WaterSettings {
 	public static float clayWaterDrag = 3.0F;
 
 	public static float curdFrictionAngle = 25.0F;
-	public static float curdCohesion = 0.12F;
-	public static float curdToughness = 1.0F;
+	public static float curdCohesion = 0.6F;
+	public static float curdToughness = 0.6F;
 	public static float curdHeal = 0.5F;
 	public static float curdGrainSize = 0.02F;
 	public static int curdGrainsPerParticle = 14;
@@ -208,6 +208,9 @@ public final class WaterSettings {
 	/** Fraction of a block's lava that has to solidify before the block turns to stone (obsidian when it is most of it). */
 	public static float lavaSolidifyBlock = 0.12F;
 	public static float lavaObsidianFraction = 0.45F;
+
+	/** Grab tool (hold G): radius of the ball of material picked up, in blocks. */
+	public static float grabRadius = 0.6F;
 
 	// Coupling between fluids and granular materials.
 	public static boolean coupling = true;

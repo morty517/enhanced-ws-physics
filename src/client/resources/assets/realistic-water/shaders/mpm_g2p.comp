@@ -171,6 +171,12 @@ bool advect(uint i, out Advected r) {
         v = p.vel.xyz + G.gravityDt.xyz * DT;
         rest = 0.0;
     }
+    float gw = grabWeight(x);
+    if (gw > 0.0) {
+        v = applyGrab(x, v, gw);
+        rest = 0.0;
+        asleep = false;
+    }
     float maxSpeed = G.simB.x;
     float sp = length(v);
     if (sp > maxSpeed) {

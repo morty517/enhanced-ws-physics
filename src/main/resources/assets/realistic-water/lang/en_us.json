@@ -14,5 +14,7 @@
   "block.realistic-water.realistic_sandstone": "Realistic Sandstone",
   "block.realistic-water.realistic_dirt": "Realistic Dirt",
   "block.realistic-water.realistic_clay": "Realistic Clay",
-  "block.realistic-water.realistic_suspicious_curd": "Suspicious Curd"
+  "block.realistic-water.realistic_suspicious_curd": "Suspicious Curd",
+  "key.realistic-water.grab": "Grab material",
+  "key.categories.realistic-water": "Realistic Water"
 }

@@ -53,7 +53,7 @@ import org.jetbrains.annotations.Nullable;
 public final class WaterWorld {
 	private static final WaterWorld INSTANCE = new WaterWorld();
 	static final int UBO_SLOT = 4608;
-	static final int UBO_SIZE = 4512;
+	static final int UBO_SIZE = 4544;
 	static final float PARTICLES_PER_CELL = 8.0F;
 	static final float SAND_POISSON = 0.3F;
 
@@ -733,6 +733,7 @@ public final class WaterWorld {
 		this.smoothedFrameMs = this.smoothedFrameMs * 0.9F + frameDt * 1000.0F * 0.1F;
 		Vec3 cam = mc.gameRenderer.getMainCamera().getPosition();
 		double reach = (mc.options.renderDistance().get() + 2) * 16.0;
+		Grabber.update(mc);
 
 		List<WaterRegion> active = new ArrayList<>();
 		List<WaterRegion> merged = new ArrayList<>();
@@ -863,7 +864,7 @@ public final class WaterWorld {
 			if (sand && r.waterPartner != null && r.waterPartner.lastMaxSpeed / r.waterPartner.res > 0.3F) {
 				r.wake(this.frameCounter);
 			}
-			if (sand && entityNear(level, r)) {
+			if (sand && (entityNear(level, r) || grabNear(r))) {
 				r.wake(this.frameCounter);
 			}
 			int regionSteps = !sand ? steps : r.dormant() ? 0 : sandSteps;
@@ -958,6 +959,17 @@ public final class WaterWorld {
 		double h = 1.0 / r.res;
 		AABB box = new AABB(b[0] * h, b[1] * h, b[2] * h, b[3] * h, b[4] * h, b[5] * h).inflate(0.5);
 		return !level.getEntities((Entity) null, box, e -> !e.isSpectator()).isEmpty() || !movingPistons(level, box.inflate(1.0)).isEmpty();
+	}
+
+	private static boolean grabNear(WaterRegion r) {
+		if (!Grabber.active() || r.boxWorld == null) {
+			return false;
+		}
+		int[] b = r.boxWorld;
+		double h = 1.0 / r.res;
+		double m = Grabber.radius() + 1.0;
+		Vec3 c = Grabber.center();
+		return c.x > b[0] * h - m && c.x < b[3] * h + m && c.y > b[1] * h - m && c.y < b[4] * h + m && c.z > b[2] * h - m && c.z < b[5] * h + m;
 	}
 
 	private static boolean overlaps(int[] a, int[] b) {
@@ -1069,6 +1081,15 @@ public final class WaterWorld {
 			impactLogJ);
 		r.frameUniformSlot = r.uniformSlot(this.frameCounter, this.sourceSlotBits(r));
 		this.writeMaterialTable(b, o + 3920, dt, r.frameUniformSlot, r.material.fluid() ? r.material : Material.SAND);
+		if (Grabber.active()) {
+			Vec3 c = Grabber.center();
+			Vec3 v = Grabber.velocity();
+			putFloats(b, o + 4512, (float) (c.x - r.ox) * res, (float) (c.y - r.oy) * res, (float) (c.z - r.oz) * res, Grabber.radius() * res);
+			putFloats(b, o + 4528, (float) v.x * res, (float) v.y * res, (float) v.z * res, 1.0F);
+		} else {
+			putFloats(b, o + 4512, 0.0F, 0.0F, 0.0F, 0.0F);
+			putFloats(b, o + 4528, 0.0F, 0.0F, 0.0F, 0.0F);
+		}
 		this.uboRing.flush(o, UBO_SIZE);
 		return sourceCount;
 	}

@@ -200,6 +200,12 @@ bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out float m
         v += G.gravityDt.xyz * DT;
         dx = DT * v;
     }
+    float gw = grabWeight(x);
+    if (gw > 0.0) {
+        v = applyGrab(x, v, gw);
+        dx = mix(dx, DT * v, gw);
+        tag = 0.0; // held water doesn't dry out
+    }
     float s = length(v);
     if (s > maxSpeed) {
         v *= maxSpeed / s;

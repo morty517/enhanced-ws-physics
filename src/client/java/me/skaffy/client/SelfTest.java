@@ -37,6 +37,9 @@ public final class SelfTest {
 	private static final boolean MIX = "mix".equals(System.getProperty("realisticwater.selftest.scene"));
 	/** -Drealisticwater.selftest.scene=solids: breakable materials resting on the ground, then the same ones dropped from height. */
 	private static final boolean SOLIDS = "solids".equals(System.getProperty("realisticwater.selftest.scene"));
+	/** -Drealisticwater.selftest.grab=true (solids scene): grab the middle block and lift it by looking up. */
+	private static final boolean GRAB = Boolean.getBoolean("realisticwater.selftest.grab");
+	private static int grabFrame = -1;
 	private static final Material[] SOLID_MATERIALS = {Material.SANDSTONE, Material.DIRT, Material.CLAY, Material.SUSPICIOUS_CURD, Material.SNOW};
 	private static final float PITCH = PIT ? 62.0F : 25.0F;
 	private static boolean splashShot;
@@ -142,6 +145,24 @@ public final class SelfTest {
 			case WATER -> {
 				mc.player.setYRot(0.0F);
 				mc.player.setXRot(PITCH);
+				if (SOLIDS && GRAB) {
+					int f = frames() - frameMark;
+					if (f == 40) {
+						// The clay block in the middle: aim at it first, then look up to drag a piece off.
+						Vec3 at = groundAhead(mc, 7.5, 0.0).add(0.0, 0.8, 0.0);
+						Vec3 eye = mc.player.getEyePosition();
+						Vec3 d = at.subtract(eye);
+						grabFrame = f;
+						mc.player.setXRot((float) Math.toDegrees(-Math.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z))));
+						me.skaffy.client.water.Grabber.testHold(at);
+					}
+					if (grabFrame >= 0) {
+						Vec3 at = groundAhead(mc, 7.5, 0.0).add(0.0, 0.8, 0.0);
+						Vec3 d = at.subtract(mc.player.getEyePosition());
+						float aim = (float) Math.toDegrees(-Math.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z)));
+						mc.player.setXRot(aim - Math.min(f - grabFrame, 40) * 0.5F);
+					}
+				}
 				logProgress();
 				if (frames() - frameMark >= Integer.getInteger("realisticwater.selftest.frames", 90)) {
 					shot(mc, "rw-selftest-water.png");

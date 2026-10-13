@@ -64,3 +64,9 @@ Java 21 is enough to run Gradle (Loom 1.14).
 - Granular materials and fluids are coupled (grains displace water, water drags and lifts grains).
 - Regions made of a single material skip all mixture work (the slot mask is read back from the GPU), so plain water costs
   the same as before materials existed.
+
+## Grab tool
+
+Hold **G** (rebindable under Controls -> Realistic Water) to pick up the simulated material under the crosshair: a ball of
+`grabRadius` blocks follows your view at the distance it was picked at (scroll to move it), tearing pieces off cohesive
+blocks. Let go and it keeps its speed, so it can be thrown. Works on fluids, lava and every granular material.

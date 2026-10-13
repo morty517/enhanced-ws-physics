@@ -14,5 +14,7 @@
   "block.realistic-water.realistic_sandstone": "Реалистичный песчаник",
   "block.realistic-water.realistic_dirt": "Реалистичная земля",
   "block.realistic-water.realistic_clay": "Реалистичная глина",
-  "block.realistic-water.realistic_suspicious_curd": "Подозрительный творог"
+  "block.realistic-water.realistic_suspicious_curd": "Подозрительный творог",
+  "key.realistic-water.grab": "Схватить материал",
+  "key.categories.realistic-water": "Realistic Water"
 }
