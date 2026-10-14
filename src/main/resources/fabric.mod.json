@@ -2,11 +2,12 @@
 	"schemaVersion": 1,
 	"id": "realistic-water",
 	"version": "${version}",
-	"name": "Realistic Water GL",
-	"description": "Modified version (not the original) of Skaffy's Realistic Water (https://github.com/sskaffy/Realistic-Water): OpenGL port for 1.21.8 with extra materials, lava, breakable solids and a grab tool.",
+	"name": "Enhanced WS Physics",
+	"description": "Enhanced WS (Water & Sand) Physics. Modified version (not the original) of Skaffy's Realistic Water (https://github.com/sskaffy/Realistic-Water): OpenGL port for 1.21.8 with extra materials, lava, breakable solids and a grab tool.",
 	"authors": [
 		"Skaffy (original mod)",
-		"Morty (fork)"
+		"morty517 (fork)",
+		"Claude by Anthropic (fork code)"
 	],
 	"contact": {
 		"sources": "https://github.com/sskaffy/Realistic-Water"

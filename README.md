@@ -1,4 +1,6 @@
-# Realistic Water GL — a fork of Skaffy's Realistic Water for Minecraft 1.21.8 (Fabric)
+# Enhanced WS Physics — Water & Sand physics for Minecraft 1.21.8 (Fabric)
+
+A fork of **Realistic Water by Skaffy**.
 
 > **This is a modified version, not the original mod.**
 > Original mod: **Realistic Water by Skaffy** — https://github.com/sskaffy/Realistic-Water (Minecraft 26.3, Vulkan).
@@ -10,7 +12,8 @@
 (MAC grid, multigrid-preconditioned pressure solve, whitewater), the MPM sand solver, surface meshing, the screen-space
 water rendering, block syncing, commands and settings.
 
-**This fork (Morty, morty517)** — everything below is added on top of Skaffy's engine:
+**This fork: Enhanced WS Physics** — by **morty517** (ideas, design direction, testing) and **Claude** (Anthropic's AI,
+which wrote the code). Everything below is added on top of Skaffy's engine:
 
 - Port from Vulkan / Minecraft 26.3 to **OpenGL 4.3 / Minecraft 1.21.8** (see the table further down).
 - A **material system**: milk, suspicious milk, lava, red sand, gravel, snow, sandstone, dirt, clay, suspicious curd.
