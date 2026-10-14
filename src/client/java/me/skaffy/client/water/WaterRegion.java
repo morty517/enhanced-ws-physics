@@ -440,18 +440,20 @@ public final class WaterRegion implements AutoCloseable {
 			&& boxWorld[0] >= this.originCellX() && boxWorld[1] >= this.originCellY() && boxWorld[2] >= this.originCellZ()
 			&& boxWorld[3] <= this.originCellX() + this.nx && boxWorld[4] <= this.originCellY() + this.ny && boxWorld[5] <= this.originCellZ() + this.nz;
 		long boxVolume = (long) (boxWorld[3] - boxWorld[0]) * (boxWorld[4] - boxWorld[1]) * (boxWorld[5] - boxWorld[2]);
-		if (fits && (long) this.nx * this.ny * this.nz > 6L * boxVolume) {
+		if (fits && (long) this.nx * this.ny * this.nz > 3L * boxVolume) {
 			this.oversizeFrames++;
 		} else {
 			this.oversizeFrames = 0;
 		}
-		if (!fits || this.oversizeFrames > 120) {
+		if (!fits || this.oversizeFrames > 60) {
 			int[] lo = new int[3];
 			int[] size = new int[3];
 			for (int a = 0; a < 3; a++) {
 				int bMin = Math.floorDiv(boxWorld[a], this.res);
 				int bMax = Math.ceilDiv(boxWorld[3 + a], this.res);
-				int slack = Math.max(2, (bMax - bMin) / 4);
+				// Room to move without re-planning every frame, but capped: on a big area a percentage of slack multiplies the
+				// cell count (and the 8x finer surface grid on top) for nothing.
+				int slack = Math.clamp((bMax - bMin) / 8, 2, 6);
 				lo[a] = bMin - slack;
 				size[a] = bMax - bMin + 2 * slack;
 				if (size[a] * this.res % 2 != 0) {

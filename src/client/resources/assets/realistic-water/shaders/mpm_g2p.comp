@@ -195,6 +195,10 @@ bool advect(uint i, out Advected r) {
         }
     } else {
         v = p.vel.xyz + G.gravityDt.xyz * DT;
+        // Lone grains outside the simulated box: no grid, so give them ground friction here or they'd slide forever.
+        if (solidAt(x - vec3(0.0, 0.6, 0.0))) {
+            v.xz *= exp(-12.0 * DT);
+        }
         rest = 0.0;
     }
     // Both corrections below move particles a little (a position shift per step) instead of changing their velocity: velocity
@@ -291,7 +295,8 @@ void main() {
         stateDst[so + STATE_REST] = r.rest;
         stateDst[so + STATE_DAMAGE] = r.damage;
     }
-    // Like g2p: flying lone grains don't stretch the box; once they land (slow) they pull it along.
-    bool inBox = r.bulk || length(r.v) < 2.0 * G.camGrid.w;
+    // Only clumps of grains (not lone ones, flying or lying around) stretch the box: a handful of stray grains a few blocks
+    // away would otherwise blow the box (and every grid pass, and video memory) up to the whole area between them.
+    bool inBox = r.bulk;
     compactBounds(wrote && inBox, uvec3(ivec3(floor(r.x)) + AABB_BIAS));
 }
