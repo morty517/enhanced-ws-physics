@@ -11,6 +11,7 @@
 shared uint cmpCount;
 shared uint cmpBase;
 shared uint cmpMaxSpeed;
+shared uint cmpMaxSpeedAll;
 shared uint cmpAwake;
 shared uint cmpLo[3];
 shared uint cmpHi[3];
@@ -19,6 +20,7 @@ void compactBegin() {
     if (gl_LocalInvocationIndex == 0u) {
         cmpCount = 0u;
         cmpMaxSpeed = 0u;
+        cmpMaxSpeedAll = 0u;
         cmpAwake = 0u;
         cmpLo[0] = 0xFFFFFFFFu;
         cmpLo[1] = 0xFFFFFFFFu;
@@ -31,12 +33,14 @@ void compactBegin() {
 }
 
 // Reserves an output slot for every invocation with alive == true. Returns the global slot index (0xFFFFFFFF if not alive).
-// speed must be >= 0 (its float bits are compared as uint). The largest speed of the group goes to counters[6].
-uint compactReserve(bool alive, float speed, bool awake, uint counterIndex) {
+// Speeds must be >= 0 (float bits are compared as uint). counters[6] gets the largest speed of the bulk of the material (what
+// the time step has to follow), counters[7] the largest of all particles, spray included (what the window has to follow).
+uint compactReserve(bool alive, float bulkSpeed, float speed, bool awake, uint counterIndex) {
     uint local = 0u;
     if (alive) {
         local = atomicAdd(cmpCount, 1u);
-        atomicMax(cmpMaxSpeed, floatBitsToUint(speed));
+        atomicMax(cmpMaxSpeed, floatBitsToUint(bulkSpeed));
+        atomicMax(cmpMaxSpeedAll, floatBitsToUint(speed));
         if (awake) {
             atomicAdd(cmpAwake, 1u);
         }
@@ -45,6 +49,7 @@ uint compactReserve(bool alive, float speed, bool awake, uint counterIndex) {
     if (gl_LocalInvocationIndex == 0u && cmpCount > 0u) {
         cmpBase = atomicAdd(counters[counterIndex], cmpCount);
         atomicMax(counters[6], cmpMaxSpeed);
+        atomicMax(counters[7], cmpMaxSpeedAll);
     }
     barrier();
     return alive ? cmpBase + local : 0xFFFFFFFFu;

@@ -242,7 +242,12 @@ public final class WaterRegion implements AutoCloseable {
 	private int @Nullable [] fieldBox;
 	private boolean fieldStale = true;
 	int lastWhitewaterCount;
+	/** Fastest particle of the bulk (sets the time step) and fastest of all, spray included (sets the window margin). */
 	float lastMaxSpeed;
+	float lastMaxSpeedAll;
+	/** This frame's step count and step length, chosen per region by WaterWorld. */
+	int frameSteps;
+	float frameDt = 1.0F / 60.0F;
 	private int emittedSinceReadback;
 	/** Slot mask read back from the GPU, and slots known to be arriving that the readback can't show yet. */
 	private int gpuSlots;
@@ -330,6 +335,7 @@ public final class WaterRegion implements AutoCloseable {
 		this.lastFluidCount = Math.max(b.getInt(off), b.getInt(off + 4));
 		this.lastWhitewaterCount = Math.max(b.getInt(off + 8), b.getInt(off + 12));
 		this.lastMaxSpeed = b.getFloat(off + 24);
+		this.lastMaxSpeedAll = Math.max(this.lastMaxSpeed, b.getFloat(off + 28));
 		if (this.slotHasAabb[slot] && this.slotOrigin[slot] != null) {
 			int[] o = this.slotOrigin[slot];
 			int minX = b.getInt(off + 32);
@@ -415,7 +421,7 @@ public final class WaterRegion implements AutoCloseable {
 		if (b == null) {
 			return null;
 		}
-		int margin = WaterSettings.boxMargin + (int) Math.ceil(this.lastMaxSpeed * 0.12F);
+		int margin = WaterSettings.boxMargin + (int) Math.ceil(this.lastMaxSpeedAll * 0.12F);
 		for (int a = 0; a < 3; a++) {
 			b[a] -= margin;
 			b[3 + a] += margin;
@@ -1019,7 +1025,7 @@ public final class WaterRegion implements AutoCloseable {
 
 		this.counters.fill(cb, (C_FLUID + dst) * 4L, 4, 0);
 		this.counters.fill(cb, (C_WW + wwDst) * 4L, 4, 0);
-		this.counters.fill(cb, C_MAX_SPEED * 4L, 4, 0);
+		this.counters.fill(cb, C_MAX_SPEED * 4L, 8, 0);
 		p[2].bind(cb, ubo, Desc.ssbo(this.accum), Desc.ssbo(this.cellCount), Desc.ssbo(this.cellDens), Desc.ssbo(this.wwCount[wwDst]),
 			Desc.ssbo(this.cellMix));
 		p[2].dispatch(cb, ComputeProgram.groups((long) boxCells(box) + boxFaces(box), 256), 1, 1);
@@ -1101,7 +1107,7 @@ public final class WaterRegion implements AutoCloseable {
 		int cellGroups = ComputeProgram.groups(boxCells(box), 256);
 
 		this.counters.fill(cb, (C_FLUID + dst) * 4L, 4, 0);
-		this.counters.fill(cb, C_MAX_SPEED * 4L, 4, 0);
+		this.counters.fill(cb, C_MAX_SPEED * 4L, 8, 0);
 		p[18].bind(cb, ubo, Desc.ssbo(this.mpmGrid), Desc.ssbo(this.cellCount), Desc.ssbo(this.cellMix));
 		p[18].dispatch(cb, cellGroups, 1, 1);
 		Gl.barrier(cb);

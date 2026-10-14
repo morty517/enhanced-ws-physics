@@ -828,29 +828,44 @@ public final class WaterWorld {
 		// Water before lava too: lava reacts with the water region's particles of this frame.
 		active.sort(java.util.Comparator.comparingInt(r -> r.material.granular() ? 2 : r.material == Material.LAVA ? 1 : 0));
 
-		int steps = 0;
-		float stepDt = frameDt;
-		if (!this.paused && !mc.isPaused()) {
-			float speed = fastest + WaterSettings.gravity * 0.15F;
-			int res = Math.max(1, WaterSettings.resolution);
-			int wanted = Math.max((int) Math.ceil(frameDt * speed * res / WaterSettings.cfl), (int) Math.ceil(frameDt / WaterSettings.maxDt));
-			steps = Mth.clamp(wanted, 1, clipDt != null ? WaterSettings.renderMaxStepsPerFrame : WaterSettings.maxStepsPerFrame);
-			stepDt = Math.min(frameDt / steps, WaterSettings.maxDt);
+		// Every region picks its own step count from its own bulk speed: a jet in one place no longer makes every other body of
+		// water (or a calm part of the same scene) step at its rate.
+		boolean running = !this.paused && !mc.isPaused();
+		int maxSteps = 0;
+		float minDt = frameDt;
+		int maxSandSteps = 0;
+		float minSandDt = frameDt;
+		for (WaterRegion r : active) {
+			if (!running) {
+				r.frameSteps = 0;
+				r.frameDt = frameDt;
+				continue;
+			}
+			if (r.material.granular()) {
+				float limit = Math.min(WaterSettings.sandCfl / (r.res * sandWaveSpeed()), 1.0F / (r.res * Math.max(r.lastMaxSpeed / r.res, 1e-3F)));
+				int wanted = (int) Math.ceil(frameDt / limit);
+				r.frameSteps = Mth.clamp(wanted, 1, clipDt != null ? Integer.MAX_VALUE : Math.max(1, WaterSettings.sandMaxStepsPerFrame));
+				r.frameDt = Math.min(frameDt / r.frameSteps, limit);
+				maxSandSteps = Math.max(maxSandSteps, r.frameSteps);
+				minSandDt = Math.min(minSandDt, r.frameDt);
+			} else {
+				float speed = r.lastMaxSpeed / r.res + WaterSettings.gravity * 0.15F;
+				int wanted = Math.max((int) Math.ceil(frameDt * speed * r.res / WaterSettings.cfl), (int) Math.ceil(frameDt / WaterSettings.maxDt));
+				r.frameSteps = Mth.clamp(wanted, 1, clipDt != null ? WaterSettings.renderMaxStepsPerFrame : WaterSettings.maxStepsPerFrame);
+				r.frameDt = Math.min(frameDt / r.frameSteps, WaterSettings.maxDt);
+				maxSteps = Math.max(maxSteps, r.frameSteps);
+				minDt = Math.min(minDt, r.frameDt);
+			}
 		}
-		int sandSteps = 0;
-		float sandDt = frameDt;
-		if (!this.paused && !mc.isPaused()) {
-			int sandRes = resolutionFor(Material.SAND);
-			float limit = Math.min(WaterSettings.sandCfl / (sandRes * sandWaveSpeed()), 1.0F / (sandRes * Math.max(fastestSand, 1e-3F)));
-			int wanted = (int) Math.ceil(frameDt / limit);
-			sandSteps = Mth.clamp(wanted, 1, clipDt != null ? Integer.MAX_VALUE : Math.max(1, WaterSettings.sandMaxStepsPerFrame));
-			sandDt = Math.min(frameDt / sandSteps, limit);
-		}
+		int steps = maxSteps;
+		float stepDt = minDt;
+		int sandSteps = maxSandSteps;
+		float sandDt = minSandDt;
 		this.lastSteps = steps;
 		this.lastDt = stepDt;
 		this.lastSandSteps = sandSteps;
 		this.lastSandDt = sandDt;
-		this.simTime += steps * stepDt;
+		this.simTime += running ? Math.min(frameDt, WaterSettings.maxDt * Math.max(steps, 1)) : 0.0F;
 
 		RenderTarget main = mc.getMainRenderTarget();
 		GpuTexture colorTexture = main.getColorTexture();
@@ -908,13 +923,13 @@ public final class WaterWorld {
 			if (sand && (entityNear(level, r) || this.grabNear(r))) {
 				r.wake(this.frameCounter);
 			}
-			int regionSteps = !sand ? steps : r.dormant() ? 0 : sandSteps;
+			int regionSteps = sand && r.dormant() ? 0 : r.frameSteps;
 			if (readFill && r.initialized() && (this.frameCounter + r.id) % SYNC_INTERVAL == 0) {
 				r.fillRequested = true;
 			}
 			int slot = Gl.ringSlot() * MAX_REGIONS + i;
 			List<float[]> removals = r.takeRemovals();
-			int numSources = this.writeGlobals(mc, level, r, slot, sand ? sandDt : stepDt, width, height, removals);
+			int numSources = this.writeGlobals(mc, level, r, slot, r.frameDt, width, height, removals);
 			Desc ubo = Desc.ubo(this.uboRing, (long) slot * UBO_SLOT, UBO_SIZE);
 			r.frameUbo = ubo;
 			if (!sand && !r.grainPartners.isEmpty()) {
@@ -1322,7 +1337,13 @@ public final class WaterWorld {
 		int piles = 0;
 		long cells = 0;
 		long windowCells = 0;
+		float bulk = 0.0F;
+		float all = 0.0F;
 		for (WaterRegion r : this.regions) {
+			if (r.material.fluid()) {
+				bulk = Math.max(bulk, r.lastMaxSpeed / r.res);
+				all = Math.max(all, r.lastMaxSpeedAll / r.res);
+			}
 			if (r.material.granular()) {
 				sand += r.lastFluidCount;
 				piles++;
@@ -1337,8 +1358,8 @@ public final class WaterWorld {
 			windowCells += r.numCells;
 		}
 		return String.format("%d fluid bodies  fluid %,d  whitewater %,d  |  %d granular bodies  grains %,d  |  active %,d cells of %,d allocated  |  "
-				+ "frame %.1f ms  water steps %d x %.1f ms  sand steps %d x %.2f ms  sources %d  %s",
-			bodies, fluid, ww, piles, sand, cells, windowCells, this.smoothedFrameMs, this.lastSteps, this.lastDt * 1000.0F, this.lastSandSteps,
+				+ "frame %.1f ms  water steps %d x %.1f ms (bulk %.1f, spray %.1f blocks/s)  sand steps %d x %.2f ms  sources %d  %s",
+			bodies, fluid, ww, piles, sand, cells, windowCells, this.smoothedFrameMs, this.lastSteps, this.lastDt * 1000.0F, bulk, all, this.lastSandSteps,
 			this.lastSandDt * 1000.0F, this.sources.size(), isHost() ? "(syncing blocks)" : "(not host: blocks follow the server)")
 			+ (Gl.deviceInfo().isEmpty() ? "" : "  |  " + Gl.deviceInfo());
 	}

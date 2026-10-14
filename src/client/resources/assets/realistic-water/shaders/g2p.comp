@@ -166,12 +166,13 @@ void emitWhitewater(uint id, vec3 x, vec3 v) {
 }
 
 // Advances particle i. Returns false when it dies this step (or the slot is past the live count).
-bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out float mixOut, out bool griddedOut) {
+bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out float mixOut, out bool griddedOut, out bool bulkOut) {
     xnOut = vec3(0.0);
     vOut = vec3(0.0);
     tagOut = 0.0;
     mixOut = 0.0;
     griddedOut = false;
+    bulkOut = false;
     if (i >= counters[pc.a.x]) {
         return false;
     }
@@ -231,7 +232,15 @@ bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out float m
     if (dl > maxStep) {
         dx *= maxStep / dl;
     }
-    vec3 xn = collideStatic(x, x + dx, v);
+    // Long moves (fast spray with the bigger steps it no longer forces on everyone) are checked against blocks in pieces of
+    // under a cell, so nothing tunnels through walls.
+    int nsub = clamp(int(ceil(length(dx) / 0.9)), 1, 16);
+    vec3 seg = dx / float(nsub);
+    vec3 xn = x;
+    for (int s = 0; s < nsub; s++) {
+        xn = collideStatic(xn, xn + seg, v);
+        seg = mix(seg, vec3(0.0), equal(v, vec3(0.0)));
+    }
     xn = collideEntities(xn, v);
     if (any(isnan(xn)) || any(isinf(xn)) || any(isnan(v))) {
         return false;
@@ -244,6 +253,8 @@ bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out float m
     xnOut = xn;
     vOut = v;
     tagOut = tag;
+    // Bulk: in a cell that is at least partly full. Lone drops and thin spray don't set the time step.
+    bulkOut = gridded && float(countAt(ivec3(floor(x)))) >= max(2.0, 0.4 * G.simA.y);
     uint seed = hash(i * 2246822519u + uint(pc.a.w) * 3266489917u);
     mixOut = uniformSlot() >= 0 ? p.vel.w : mixCodeQ(floor(normalizeMix(mw).yz * 1023.0 + vec2(rand(seed), rand(seed))));
     griddedOut = gridded;
@@ -259,13 +270,17 @@ void main() {
     float tag;
     float mixCodeOut;
     bool gridded;
-    bool alive = advect(i, xn, v, tag, mixCodeOut, gridded);
-    uint o = compactReserve(alive, alive ? length(v) : 0.0, true, uint(pc.a.y));
+    bool bulk;
+    bool alive = advect(i, xn, v, tag, mixCodeOut, gridded, bulk);
+    uint o = compactReserve(alive, alive && bulk ? length(v) : 0.0, alive ? length(v) : 0.0, true, uint(pc.a.y));
     bool wrote = alive && o < uint(G.caps.x);
     if (wrote) {
         dst[o] = Particle(vec4(xn, tag), vec4(v, mixCodeOut));
     }
-    compactBounds(wrote, uvec3(ivec3(floor(xn)) + AABB_BIAS));
+    // The simulated box follows the bulk and anything that has come to rest; fast lone spray flies outside it on its own
+    // (ballistic, still colliding) instead of stretching the box (and every grid pass) over empty air.
+    bool inBox = bulk || length(v) < 2.0 * G.camGrid.w;
+    compactBounds(wrote && inBox, uvec3(ivec3(floor(xn)) + AABB_BIAS));
     if (wrote && pc.b.y != 0 && gridded) {
         emitWhitewater(i, xn, v);
     }
