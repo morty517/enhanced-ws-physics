@@ -1,18 +1,38 @@
-# Realistic Water — unofficial OpenGL port for Minecraft 1.21.8 (Fabric)
+# Realistic Water GL — a fork of Skaffy's Realistic Water for Minecraft 1.21.8 (Fabric)
 
-**This is a modified version, not the original mod.** Original mod by **Skaffy**:
-https://github.com/sskaffy/Realistic-Water (Minecraft 26.3, Vulkan backend). All simulation and rendering
-techniques are Skaffy's work; this fork only moves them to OpenGL 4.3 and Minecraft 1.21.8. Same license as the
-original (see `LICENSE`).
+> **This is a modified version, not the original mod.**
+> Original mod: **Realistic Water by Skaffy** — https://github.com/sskaffy/Realistic-Water (Minecraft 26.3, Vulkan).
+> Distributed under the same license as the original (see [`LICENSE`](LICENSE)); please support the original project.
+
+## Credits
+
+**Skaffy (original mod)** — the whole simulation and rendering design this fork is built on: the FLIP water solver
+(MAC grid, multigrid-preconditioned pressure solve, whitewater), the MPM sand solver, surface meshing, the screen-space
+water rendering, block syncing, commands and settings.
+
+**This fork (Morty, morty517)** — everything below is added on top of Skaffy's engine:
+
+- Port from Vulkan / Minecraft 26.3 to **OpenGL 4.3 / Minecraft 1.21.8** (see the table further down).
+- A **material system**: milk, suspicious milk, lava, red sand, gravel, snow, sandstone, dirt, clay, suspicious curd.
+- Fluids that **push and mix** with each other, granular materials that **stack and push** each other, and coupling
+  between fluids and granular materials.
+- **Lava** that glows and solidifies into cobblestone / obsidian where it meets water (with steam).
+- **Breakable solids**: blocks that stand on their own and crumble when dropped or hit.
+- The **grab tool** and **realistic snowballs**.
+- Performance work for single-material areas and a number of driver fixes (NVIDIA, Windows TDR).
 
 ## Using it
 
 1. Install Fabric Loader for 1.21.8 and Fabric API `0.136.1+1.21.8` (or newer for 1.21.8).
-2. Put `realistic-water-1.2.1-gl+1.21.8.jar` from `build/libs/` into `mods/`.
-3. No graphics-API switch needed — 1.21.8 runs on OpenGL. A GPU/driver with **OpenGL 4.3** is required
-   (any desktop NVIDIA/AMD/Intel GPU from ~2012 on with current drivers; macOS is not supported, it stops at GL 4.1).
-4. `/water ball`, `/water sand`, or the *Realistic Water Bucket* / *Realistic Sand* from the creative inventory.
-   `/water stats`, `/water set <name> <value>`, `/water render <seconds> [fps]` work as in the original.
+2. Put the jar from `build/libs/` into `mods/` (on a server too: same jar, plus Fabric API; players need the mod).
+3. A GPU/driver with **OpenGL 4.3** is required (any desktop NVIDIA/AMD/Intel GPU from ~2012 on with current drivers;
+   macOS is not supported, it stops at GL 4.1). On laptops with two GPUs, make sure Minecraft runs on the dedicated one.
+4. Realistic buckets and blocks are in the creative inventory next to their vanilla versions, or
+   `/water spawn <material> [size]`. Hold **G** to grab material. `/water remove [material|all]`, `/water stats`,
+   `/water set <name> <value>`, `/water render <seconds> [fps]`.
+
+Blocks are written back into the world only in singleplayer (the host); on a dedicated server every player sees their
+own simulation.
 
 ## Building
 
@@ -23,7 +43,7 @@ original (see `LICENSE`).
 
 Java 21 is enough to run Gradle (Loom 1.14).
 
-## What changed compared to the original
+## Port details (Vulkan / 26.3 → OpenGL / 1.21.8)
 
 | Area | 26.3 / Vulkan original | This port |
 |---|---|---|
@@ -48,7 +68,7 @@ Java 21 is enough to run Gradle (Loom 1.14).
   `-Drealisticwater.selftest=true`, which that run configuration sets; normal games never run it.
   Extra flags: `-PselftestArgs="-Drealisticwater.selftest.resolution=6 -Drealisticwater.selftest.clip=true"`.
 
-## Materials (additions in this fork)
+## Materials
 
 - Fluids: water, milk, suspicious milk. They share one FLIP simulation per area; each particle carries its mixture
   (stored in `vel.w`), so fluids push each other, blend over time (`/water set fluidMixRate <1/s>`, 0 keeps them apart)

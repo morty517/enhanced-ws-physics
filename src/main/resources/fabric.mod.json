@@ -2,12 +2,14 @@
 	"schemaVersion": 1,
 	"id": "realistic-water",
 	"version": "${version}",
-	"name": "Realistic Water",
-	"description": "Ultra realistic water and sand in Minecraft! Unofficial OpenGL port for 1.21.8 of Skaffy's Realistic Water (https://github.com/sskaffy/Realistic-Water).",
+	"name": "Realistic Water GL",
+	"description": "Modified version (not the original) of Skaffy's Realistic Water (https://github.com/sskaffy/Realistic-Water): OpenGL port for 1.21.8 with extra materials, lava, breakable solids and a grab tool.",
 	"authors": [
-		"Skaffy"
+		"Skaffy (original mod)",
+		"Morty (fork)"
 	],
 	"contact": {
+		"sources": "https://github.com/sskaffy/Realistic-Water"
 	},
 	"license": "Custom License",
 	"icon": "assets/realistic-water/icon.png",
