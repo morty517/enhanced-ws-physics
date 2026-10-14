@@ -1,5 +1,6 @@
 package me.skaffy;
 
+import me.skaffy.net.ExplosionPayload;
 import me.skaffy.net.MaterialSyncPayload;
 import me.skaffy.net.RemoveAllWaterPayload;
 import me.skaffy.net.SolidifyPayload;
@@ -24,6 +25,7 @@ public class RealisticWater implements ModInitializer {
 		PayloadTypeRegistry.playC2S().register(MaterialSyncPayload.TYPE, MaterialSyncPayload.CODEC);
 		PayloadTypeRegistry.playC2S().register(RemoveAllWaterPayload.TYPE, RemoveAllWaterPayload.CODEC);
 		PayloadTypeRegistry.playC2S().register(SolidifyPayload.TYPE, SolidifyPayload.CODEC);
+		PayloadTypeRegistry.playS2C().register(ExplosionPayload.TYPE, ExplosionPayload.CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(SolidifyPayload.TYPE, (payload, context) -> {
 			if (isAuthority(context.server(), context.player())) {
 				context.server().execute(() -> payload.apply(context.player()));

@@ -20,7 +20,40 @@ import net.minecraft.world.phys.Vec3;
 final class Carriers {
 	static final int MAX = 8;
 
-	record Carrier(Vec3 center, Vec3 velocity, float radius) {
+	/** blast = 0: a carrier (material moves with it). blast > 0: an explosion, pushing material outwards at up to this speed. */
+	record Carrier(Vec3 center, Vec3 velocity, float radius, float blast) {
+		Carrier(Vec3 center, Vec3 velocity, float radius) {
+			this(center, velocity, radius, 0.0F);
+		}
+	}
+
+	/** How long an explosion keeps pushing material out (seconds of real time). */
+	private static final double BLAST_TIME = 0.12;
+
+	private record Blast(Vec3 center, float radius, long endNanos) {
+	}
+
+	private final List<Blast> blasts = new ArrayList<>();
+	/** The last explosion the server announced (exact radius), so the vanilla packet for the same one isn't counted twice. */
+	private Vec3 lastExact;
+	private long lastExactNanos;
+
+	void explode(Vec3 center, float power, boolean exact) {
+		long now = System.nanoTime();
+		if (exact) {
+			this.lastExact = center;
+			this.lastExactNanos = now;
+		} else if (this.lastExact != null && now - this.lastExactNanos < 2_000_000_000L && this.lastExact.distanceToSqr(center) < 1e-4) {
+			return;
+		}
+		if (WaterSettings.explosionStrength <= 0.0F || power <= 0.0F) {
+			return;
+		}
+		// Vanilla pushes entities up to twice the power away; material gets thrown within ~1.5x.
+		this.blasts.add(new Blast(center, power * 1.5F, now + (long) (BLAST_TIME * 1e9)));
+		if (this.blasts.size() > MAX) {
+			this.blasts.remove(0);
+		}
 	}
 
 	private final IntOpenHashSet launched = new IntOpenHashSet();
@@ -58,13 +91,19 @@ final class Carriers {
 
 	List<Carrier> update(Minecraft mc, ClientLevel level, WaterWorld world) {
 		this.frame.clear();
+		long now = System.nanoTime();
+		this.blasts.removeIf(b -> now > b.endNanos);
+		for (Blast b : this.blasts) {
+			// Thrown out at up to ~3x the radius in blocks per second (TNT: ~18 blocks/s right next to it).
+			this.frame.add(new Carrier(b.center, Vec3.ZERO, b.radius, b.radius * 2.0F * WaterSettings.explosionStrength));
+		}
 		Grabber.update(mc);
 		if (Grabber.active()) {
 			this.frame.add(new Carrier(Grabber.center(), Grabber.velocity(), Grabber.radius()));
 		}
 		if (!WaterSettings.realisticSnowballs) {
 			this.launched.clear();
-			return this.frame;
+			return this.trimmed();
 		}
 		float partialTick = mc.gameRenderer.getMainCamera().getPartialTickTime();
 		Vec3 eye = mc.player != null ? mc.player.getEyePosition(partialTick) : null;
@@ -86,6 +125,13 @@ final class Carriers {
 			if (this.frame.size() < MAX) {
 				this.frame.add(new Carrier(pos, vel, WaterSettings.snowballSize * 0.75F));
 			}
+		}
+		return this.trimmed();
+	}
+
+	private List<Carrier> trimmed() {
+		while (this.frame.size() > MAX) {
+			this.frame.remove(this.frame.size() - 1);
 		}
 		return this.frame;
 	}

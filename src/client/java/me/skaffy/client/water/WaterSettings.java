@@ -217,6 +217,13 @@ public final class WaterSettings {
 	public static boolean realisticSnowballs = true;
 	/** Edge of the lump of snow on a snowball, in blocks. */
 	public static float snowballSize = 0.3F;
+	/** Explosions throw simulated material outwards (and break up breakable solids); multiplier on the blast speed, 0 = off. */
+	public static float explosionStrength = 1.0F;
+	/**
+	 * Lone grains (not part of a pile) still stretch the simulated area around them. Off: only piles do, which keeps the area
+	 * small when grains scatter far, but flying crumbs then move without colliding with other material until a pile comes near.
+	 */
+	public static boolean sandLoneGrainsInBox = true;
 
 	// Coupling between fluids and granular materials.
 	public static boolean coupling = true;

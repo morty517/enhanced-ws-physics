@@ -153,6 +153,11 @@ public final class WaterWorld {
 	private int lastSandSteps;
 	private float lastSandDt;
 
+	/** An explosion (exact: radius from the server; otherwise guessed from the vanilla packet). */
+	public void onExplosion(Vec3 center, float radius, boolean exact) {
+		this.carriers.explode(center, radius, exact);
+	}
+
 	public static WaterWorld get() {
 		return INSTANCE;
 	}
@@ -1145,13 +1150,17 @@ public final class WaterWorld {
 		this.writeMaterialTable(b, o + 3920, dt, r.frameUniformSlot, r.material.fluid() ? r.material : Material.SAND);
 		List<Carriers.Carrier> carried = this.carriers.current();
 		int nc = Math.min(carried.size(), Carriers.MAX);
-		putFloats(b, o + 4512, nc, 0.0F, 0.0F, 0.0F);
+		putFloats(b, o + 4512, nc, WaterSettings.sandLoneGrainsInBox ? 1.0F : 0.0F, 0.0F, 0.0F);
 		for (int k = 0; k < nc; k++) {
 			Carriers.Carrier c = carried.get(k);
 			Vec3 p = c.center();
 			Vec3 v = c.velocity();
 			putFloats(b, o + 4528 + k * 16, (float) (p.x - r.ox) * res, (float) (p.y - r.oy) * res, (float) (p.z - r.oz) * res, c.radius() * res);
-			putFloats(b, o + 4656 + k * 16, (float) v.x * res, (float) v.y * res, (float) v.z * res, 1.0F);
+			if (c.blast() > 0.0F) {
+				putFloats(b, o + 4656 + k * 16, c.blast() * res, 0.0F, 0.0F, -1.0F);
+			} else {
+				putFloats(b, o + 4656 + k * 16, (float) v.x * res, (float) v.y * res, (float) v.z * res, 1.0F);
+			}
 		}
 		this.uboRing.flush(o, UBO_SIZE);
 		return sourceCount;

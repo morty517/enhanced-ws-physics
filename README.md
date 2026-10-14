@@ -97,5 +97,11 @@ Hold **G** (rebindable under Controls -> Realistic Water) to pick up the simulat
 blocks. Let go and it keeps its speed, so it can be thrown. Works on fluids, lava and every granular material. Carried
 material keeps its shape (particles take on the carrier's velocity, only the outer shell is pulled in, gravity is held off).
 
+## Explosions
+
+Explosions throw simulated material outwards and shatter breakable solids near them (`explosionStrength`, 0 = off). With
+the mod on the server too the exact explosion radius is used; otherwise it is guessed from the vanilla packet. Simulated
+granular blocks are never dropped as items or removed by explosions: the grains themselves are blasted.
+
 Realistic snowballs (`realisticSnowballs`): a thrown snowball carries a lump of simulated snow along its flight (the vanilla
 sprite is hidden); when it hits, the snow flies on and splats, sticks or breaks apart.

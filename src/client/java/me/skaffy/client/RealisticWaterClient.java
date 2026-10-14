@@ -31,6 +31,9 @@ public class RealisticWaterClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> water.clear());
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> water.shutdown());
 		me.skaffy.client.water.Grabber.register();
+		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(me.skaffy.net.ExplosionPayload.TYPE,
+			(payload, context) -> context.client().execute(() ->
+				water.onExplosion(new net.minecraft.world.phys.Vec3(payload.x(), payload.y(), payload.z()), payload.radius(), true)));
 		// Snowballs: the simulation draws the snow they carry, so the flat vanilla sprite is hidden (unless turned off).
 		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(net.minecraft.world.entity.EntityType.SNOWBALL,
 			ctx -> new net.minecraft.client.renderer.entity.ThrownItemRenderer<net.minecraft.world.entity.projectile.Snowball>(ctx) {

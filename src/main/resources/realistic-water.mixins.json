@@ -4,7 +4,8 @@
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
 		"PistonBaseBlockMixin",
-		"PistonStructureResolverMixin"
+		"PistonStructureResolverMixin",
+		"ServerExplosionMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

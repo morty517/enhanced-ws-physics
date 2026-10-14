@@ -257,6 +257,10 @@ bool advect(uint i, out Advected r) {
     r.x = xn;
     r.v = v;
     r.spread = spread;
+    // Explosions shatter breakable solids near them outright (and crack them further out).
+    if (G.grainC[slot].x > 0.0) {
+        damage = max(damage, min(blastAt(xn) * 2.0, 1.0));
+    }
     bool nowBroken = damage >= 0.999 ? true : (damage < 0.5 ? false : broken);
     r.tag = grainTag(slot, nowBroken, grainLook(p.vel.w));
     r.damage = damage;
@@ -295,8 +299,8 @@ void main() {
         stateDst[so + STATE_REST] = r.rest;
         stateDst[so + STATE_DAMAGE] = r.damage;
     }
-    // Only clumps of grains (not lone ones, flying or lying around) stretch the box: a handful of stray grains a few blocks
-    // away would otherwise blow the box (and every grid pass, and video memory) up to the whole area between them.
-    bool inBox = r.bulk;
+    // Clumps of grains stretch the box; lone ones only once they slow down, unless sandLoneGrainsInBox is off (then a handful
+    // of stray grains far away can't blow the box up to the whole area between them, at the cost of them not colliding).
+    bool inBox = r.bulk || (G.carrierInfo.y > 0.5 && length(r.v) < 2.0 * G.camGrid.w);
     compactBounds(wrote && inBox, uvec3(ivec3(floor(r.x)) + AABB_BIAS));
 }

@@ -41,6 +41,8 @@ public final class SelfTest {
 	private static final boolean GRAB = Boolean.getBoolean("realisticwater.selftest.grab");
 	private static int grabFrame = -1;
 	/** -Drealisticwater.selftest.throw=true (solids scene): throw snowballs at the blocks. */
+	private static boolean tntFired;
+	private static int tntLogged = -1;
 	private static final boolean THROW = Boolean.getBoolean("realisticwater.selftest.throw");
 	private static final Material[] SOLID_MATERIALS = {Material.SANDSTONE, Material.DIRT, Material.CLAY, Material.SUSPICIOUS_CURD, Material.SNOW};
 	private static final float PITCH = PIT ? 62.0F : 25.0F;
@@ -176,6 +178,27 @@ public final class SelfTest {
 					for (int k = 1; k <= 3; k++) {
 						Vec3 g = groundAhead(mc, 7.5, (k - 2) * 1.8);
 						mc.player.connection.sendCommand(String.format("setblock %d %d %d minecraft:stone", (int) Math.floor(g.x), (int) Math.floor(g.y), (int) Math.floor(g.z)));
+					}
+				}
+				// -Drealisticwater.selftest.tnt=true (solids scene): TNT goes off next to the middle block once it settled.
+				if (SOLIDS && Boolean.getBoolean("realisticwater.selftest.tnt")) {
+					int f = frames() - frameMark;
+					if (f >= 60 && !tntFired) {
+						tntFired = true;
+						RealisticWater.LOGGER.warn("[selftest] before tnt | {}", WaterWorld.get().statsLine());
+						Vec3 g = groundAhead(mc, 7.5, 0.9);
+						mc.player.connection.sendCommand(String.format(java.util.Locale.ROOT, "summon tnt %.2f %.2f %.2f {fuse:0}", g.x, g.y + 0.5, g.z));
+					}
+					if ((f == 110 || f == 150) && f != tntLogged) {
+						tntLogged = f;
+						StringBuilder items = new StringBuilder();
+						for (var e : mc.level.entitiesForRendering()) {
+							if (e instanceof net.minecraft.world.entity.item.ItemEntity item) {
+								items.append(item.getItem()).append(' ');
+							}
+						}
+						shot(mc, "rw-selftest-tnt-" + f + ".png");
+						RealisticWater.LOGGER.warn("[selftest] after tnt: items [{}] | {}", items, WaterWorld.get().statsLine());
 					}
 				}
 				if (SOLIDS && THROW && mc.player != null && ticks % 6 == 0 && ticks >= 30 && ticks <= 60) {

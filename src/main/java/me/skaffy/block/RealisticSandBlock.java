@@ -87,6 +87,16 @@ public class RealisticSandBlock extends Block {
 		return true;
 	}
 
+	/**
+	 * Explosions neither drop nor remove simulated granular blocks: the block only records where grains lie, and the simulation
+	 * blasts the grains themselves apart. (Dropping loot here duplicated material: every block a few broken-off grains lay in
+	 * dropped a whole block.) The host writes the blocks back wherever the grains land.
+	 */
+	@Override
+	protected void onExplosionHit(final BlockState state, final net.minecraft.server.level.ServerLevel level, final BlockPos pos,
+		final net.minecraft.world.level.Explosion explosion, final java.util.function.BiConsumer<net.minecraft.world.item.ItemStack, BlockPos> drops) {
+	}
+
 	@Override
 	protected void createBlockStateDefinition(final StateDefinition.Builder<Block, BlockState> builder) {
 		builder.add(LAYERS);

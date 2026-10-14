@@ -5,6 +5,7 @@
 	"client": [
 		"CameraMixin",
 		"ChunkSectionsToRenderMixin",
+		"ClientPacketListenerMixin",
 		"ClientLevelMixin",
 		"DeltaTrackerTimerMixin",
 		"FogRendererMixin",

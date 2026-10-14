@@ -64,9 +64,9 @@ layout(std140, binding = 0) uniform Globals {
     vec4 grainB[8]; // water drag rate, grains drawn per particle, tint (0xRRGGBB as a float)
     vec4 grainC[8]; // toughness (plastic strain to break, 0 = never breaks), healing under compression (1/strain)
     vec4 mixInfo;   // x = fluid mixing rate (1/s), y = uniform slot or -1, z = 1 for lava (solidifies), w = lava crust coverage
-    vec4 carrierInfo;   // x = number of carriers
+    vec4 carrierInfo;   // x = number of carriers, y = 1 if lone grains stretch the simulated box
     vec4 carrierA[8];   // carriers (grab tool, snowballs): centre (cells), radius (cells)
-    vec4 carrierB[8];   // velocity (cells/s), w = 1 to keep moving with it
+    vec4 carrierB[8];   // velocity (cells/s), w = 1 to keep moving with it; w = -1: explosion, x = blast speed (cells/s)
 } G;
 
 bool isSand() {
@@ -191,6 +191,24 @@ vec4 mixSums(ivec4 m) {
 
 // ---- Carriers (the grab tool, snowballs): material inside a carrier's sphere moves with it as one piece. Particles keep their
 // places (they only take on the carrier's velocity); only the outer shell is pulled in so the piece doesn't drift out.
+// Explosions: within the radius, material is thrown outwards (and a bit up) at up to the blast speed, fading with distance.
+float blastFalloff(int k, vec3 x) {
+    float r = length(x - G.carrierA[k].xyz);
+    return clamp(1.0 - r / G.carrierA[k].w, 0.0, 1.0);
+}
+
+// How strongly x is caught in an explosion this step (0..1), for breaking up breakable solids.
+float blastAt(vec3 x) {
+    float m = 0.0;
+    int n = int(G.carrierInfo.x);
+    for (int k = 0; k < n; k++) {
+        if (G.carrierB[k].w < 0.0) {
+            m = max(m, blastFalloff(k, x));
+        }
+    }
+    return m;
+}
+
 float carrierWeight(int k, vec3 x) {
     float r = length(G.carrierA[k].xyz - x);
     return 1.0 - smoothstep(0.8 * G.carrierA[k].w, G.carrierA[k].w, r);
@@ -204,6 +222,19 @@ float applyCarriers(vec3 x, inout vec3 v, float pack) {
     float total = 0.0;
     int n = int(G.carrierInfo.x);
     for (int k = 0; k < n; k++) {
+        if (G.carrierB[k].w < 0.0) {
+            float f = blastFalloff(k, x);
+            if (f > 0.0) {
+                vec3 d = x - G.carrierA[k].xyz;
+                float r = length(d);
+                vec3 dir = normalize((r > 1e-4 ? d / r : vec3(0.0, 1.0, 0.0)) + vec3(0.0, 0.35, 0.0));
+                // Approach the outward speed quickly; never slow down material already flying out faster.
+                float want = G.carrierB[k].x * f;
+                v += dir * max(want - dot(v, dir), 0.0) * (1.0 - exp(-30.0 * DT));
+                total += f;
+            }
+            continue;
+        }
         float w = carrierWeight(k, x);
         if (w <= 0.0) {
             continue;
