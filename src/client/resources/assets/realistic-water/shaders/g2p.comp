@@ -61,13 +61,19 @@ bool waterFilm(vec3 x, vec4 film, inout vec3 v, inout vec3 dx, inout float dryne
 
 vec3 collideStatic(vec3 x, vec3 xn, inout vec3 v) {
     if (solidAt(x)) {
-        ivec3 c = ivec3(floor(x));
+        // Inside a solid (a block was placed or pushed into the material): get out along the shortest way, trying up first,
+        // as far as two blocks away, and leave with a push so the block visibly shoves the material aside.
         const ivec3 OUT[6] = ivec3[](ivec3(0, 1, 0), ivec3(1, 0, 0), ivec3(-1, 0, 0), ivec3(0, 0, 1), ivec3(0, 0, -1), ivec3(0, -1, 0));
-        for (int k = 0; k < 6; k++) {
-            ivec3 nc = c + OUT[k];
-            if (!inGrid(nc) || staticSolid[cellIndex(nc)] == 0u) {
-                v = vec3(OUT[k]) * 2.0;
-                return vec3(nc) + 0.5;
+        float res = G.camGrid.w;
+        int reach = int(res) * 2 + 2;
+        for (int d = 1; d <= reach; d++) {
+            for (int k = 0; k < 6; k++) {
+                vec3 t = x + vec3(OUT[k]) * float(d);
+                ivec3 nc = ivec3(floor(t));
+                if (!inGrid(nc) || staticSolid[cellIndex(nc)] == 0u) {
+                    v = vec3(OUT[k]) * res * 2.0;
+                    return t;
+                }
             }
         }
         return x;

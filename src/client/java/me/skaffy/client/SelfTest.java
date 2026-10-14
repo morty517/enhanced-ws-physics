@@ -147,6 +147,19 @@ public final class SelfTest {
 			case WATER -> {
 				mc.player.setYRot(0.0F);
 				mc.player.setXRot(PITCH);
+				// -Drealisticwater.selftest.blockIn=true (pit scene): fill stone into the middle of the water once it settled.
+				if (PIT && Boolean.getBoolean("realisticwater.selftest.blockIn") && frames() - frameMark == 60 && pitOrigin != null) {
+					RealisticWater.LOGGER.warn("[selftest] before blocks | {}", WaterWorld.get().statsLine());
+					mc.player.connection.sendCommand(String.format("fill %d %d %d %d %d %d minecraft:stone",
+						pitOrigin.getX() - 1, pitOrigin.getY() - 3, pitOrigin.getZ() + 5, pitOrigin.getX() + 1, pitOrigin.getY() - 2, pitOrigin.getZ() + 7));
+				}
+				if (SOLIDS && Boolean.getBoolean("realisticwater.selftest.blockIn") && frames() - frameMark == 60) {
+					RealisticWater.LOGGER.warn("[selftest] before blocks | {}", WaterWorld.get().statsLine());
+					for (int k = 1; k <= 3; k++) {
+						Vec3 g = groundAhead(mc, 7.5, (k - 2) * 1.8);
+						mc.player.connection.sendCommand(String.format("setblock %d %d %d minecraft:stone", (int) Math.floor(g.x), (int) Math.floor(g.y), (int) Math.floor(g.z)));
+					}
+				}
 				if (SOLIDS && THROW && mc.player != null && ticks % 6 == 0 && ticks >= 30 && ticks <= 60) {
 					var bp = mc.player.blockPosition();
 					double side = ((ticks / 6) % 3 - 1) * 1.8;

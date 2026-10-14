@@ -343,9 +343,11 @@ public final class WaterWorld {
 			if (m.fluid()) {
 				if (after > before) {
 					this.addMaterial(pos.immutable(), before / 8.0, after >= 8 ? 1.0 : after / 8.0, m);
-				} else {
+				} else if (newState.isAir() || Material.of(newState) != null) {
+					// Taken out (bucket, /water remove) or turned into another simulated material: remove it.
 					this.removeMaterial(pos.immutable(), after / 8.0, 1.0, m);
 				}
+				// Otherwise a block (or a piston) took its place: the simulation pushes the fluid out of the new solid.
 			} else if (after > before) {
 				this.addMaterial(pos.immutable(), before / 8.0, after / 8.0, m);
 			} else if (newState.isAir()) {
