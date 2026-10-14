@@ -181,11 +181,19 @@ bool advect(uint i, out Advected r) {
                 }
             }
             tau6 = float[](tau[0][0], tau[1][1], tau[2][2], tau[1][0], tau[2][0], tau[2][1]);
-            spread = clamp(sqrt(1.0 / max(density * MPM_VOLUME, 0.05)), 1.0, 3.0);
+            // Loose piles get their grains spread to fill the gaps; isolated bits of spray keep tight grains (spread out, a
+            // lone particle's grains would turn into a fluffy ball).
+            spread = mix(1.0, clamp(sqrt(1.0 / max(density * MPM_VOLUME, 0.05)), 1.0, 3.0), smoothstep(0.15, 0.45, density * MPM_VOLUME));
         }
     } else {
         v = p.vel.xyz + G.gravityDt.xyz * DT;
         rest = 0.0;
+    }
+    // Sparse spray: particles sharing a grid cell get the same velocity and would fly on as one clump forever. A little
+    // random scatter, stronger the sparser it is, lets clumps break up into separate grains like real flying sand.
+    if (!asleep && pack < 0.5 && inInnerBox(x)) {
+        uint js = hash(i * 1597334677u + uint(pc.a.w) * 3812015801u);
+        v += randInSphere(js) * (0.5 - pack) * 2.0 * MPM_SPRAY_SCATTER;
     }
     // Over-packed material (squeezed by the grab tool, piled impacts...) spreads back out towards normal density instead of
     // staying a hard ball forever: push down the density gradient, harder the more it is over-packed.

@@ -8,6 +8,7 @@
 #define MPM_WAKE_SPEED G.matE.z
 #define MPM_IMPACT_RATE G.matC.w
 #define MPM_IMPACT_LOG_J G.matE.w
+#define MPM_SPRAY_SCATTER G.matD.w
 
 const float MASS_FP = 1048576.0;
 const float MOM_FP = 131072.0;
