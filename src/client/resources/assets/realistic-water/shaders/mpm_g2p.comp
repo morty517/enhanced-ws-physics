@@ -189,17 +189,20 @@ bool advect(uint i, out Advected r) {
         v = p.vel.xyz + G.gravityDt.xyz * DT;
         rest = 0.0;
     }
-    // Sparse spray: particles sharing a grid cell get the same velocity and would fly on as one clump forever. A little
-    // random scatter, stronger the sparser it is, lets clumps break up into separate grains like real flying sand.
+    // Both corrections below move particles a little (a position shift per step) instead of changing their velocity: velocity
+    // kicks would add up step after step and launch lone grains off at absurd speeds.
+    vec3 shift = vec3(0.0);
+    // Sparse spray: particles sharing a grid cell get the same velocity and would fly on as one clump forever. A small random
+    // wander, stronger the sparser it is, lets clumps drift apart into separate grains.
     if (!asleep && pack < 0.5 && inInnerBox(x)) {
         uint js = hash(i * 1597334677u + uint(pc.a.w) * 3812015801u);
-        v += randInSphere(js) * (0.5 - pack) * 2.0 * MPM_SPRAY_SCATTER;
+        shift += randInSphere(js) * (0.5 - pack) * 2.0 * MPM_SPRAY_SCATTER * DT;
     }
-    // Over-packed material (squeezed by the grab tool, piled impacts...) spreads back out towards normal density instead of
-    // staying a hard ball forever: push down the density gradient, harder the more it is over-packed.
+    // Over-packed material (squeezed by the grab tool, pressed against walls...) spreads back out towards normal density
+    // instead of staying a hard ball forever: step down the density gradient, further the more it is over-packed.
     float excess = pack - 1.3;
     if (excess > 0.0 && dot(packGrad, packGrad) > 1e-8) {
-        v -= normalize(packGrad) * min(excess, 2.0) * 8.0;
+        shift -= normalize(packGrad) * min(excess, 1.0) * 4.0 * DT;
         rest = 0.0;
         asleep = false;
     }
@@ -212,7 +215,7 @@ bool advect(uint i, out Advected r) {
     if (sp > maxSpeed) {
         v *= maxSpeed / sp;
     }
-    vec3 xn = asleep ? x : collideStatic(x, x + DT * v, v);
+    vec3 xn = asleep ? x : collideStatic(x, x + DT * v + shift, v);
     vec3 pushed = collideEntities(xn, v);
     if (pushed != xn) {
         rest = 0.0;

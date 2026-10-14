@@ -105,8 +105,8 @@ public final class WaterSettings {
 	public static float sandGrainSize = 0.01F;
 	public static int sandGrainsPerParticle = 32;
 	public static float sandGrainSpread = 0.5F;
-	/** Random scatter of sparse flying grains (blocks/s) so clumps break up into separate grains. */
-	public static float sandSprayScatter = 0.6F;
+	/** How fast sparse flying grains wander apart (blocks/s of random drift, not added speed) so clumps break up. */
+	public static float sandSprayScatter = 1.5F;
 	public static float sandGrainMinPixels = 0.7F;
 	public static float sandBrightness = 1.1F;
 	public static boolean sandSounds = true;
