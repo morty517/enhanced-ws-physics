@@ -117,6 +117,17 @@ public final class WaterWorld {
 	private final ArrayDeque<ChunkPos> chunkScanQueue = new ArrayDeque<>();
 	private final java.util.EnumMap<Material, Echoes> echoes = new java.util.EnumMap<>(Material.class);
 	private final List<Object[]> pendingFills = new ArrayList<>();
+	/**
+	 * Fluid blocks that turned into air, removed only if they are still air a few ticks later. Pistons are animated on the
+	 * client too: it briefly sets air before the moving piston, and removing the fluid then would delete what the piston
+	 * should push aside.
+	 */
+	private record PendingRemoval(BlockPos pos, double y0, Material material, int dueTick) {
+	}
+
+	private final List<PendingRemoval> pendingRemovals = new ArrayList<>();
+	private int clientTicks;
+	private static final int REMOVAL_DELAY_TICKS = 3;
 	private final FlowSounds sounds = new FlowSounds();
 	private final Carriers carriers = new Carriers();
 	/** Voxelised static geometry: one cache for fluids, one for granular materials (they ignore granular blocks). */
@@ -312,6 +323,7 @@ public final class WaterWorld {
 		this.regions.clear();
 		this.echoes.values().forEach(Echoes::clear);
 		this.pendingFills.clear();
+		this.pendingRemovals.clear();
 		this.sounds.clear();
 	}
 
@@ -343,9 +355,12 @@ public final class WaterWorld {
 			if (m.fluid()) {
 				if (after > before) {
 					this.addMaterial(pos.immutable(), before / 8.0, after >= 8 ? 1.0 : after / 8.0, m);
-				} else if (newState.isAir() || Material.of(newState) != null) {
-					// Taken out (bucket, /water remove) or turned into another simulated material: remove it.
+				} else if (Material.of(newState) != null) {
+					// Lower level or turned into another simulated material: remove the difference now.
 					this.removeMaterial(pos.immutable(), after / 8.0, 1.0, m);
+				} else if (newState.isAir()) {
+					// Taken out (bucket, /water remove)... or a piston's brief client-side air: decide a few ticks later.
+					this.pendingRemovals.add(new PendingRemoval(pos.immutable(), after / 8.0, m, this.clientTicks + REMOVAL_DELAY_TICKS));
 				}
 				// Otherwise a block (or a piston) took its place: the simulation pushes the fluid out of the new solid.
 			} else if (after > before) {
@@ -443,6 +458,18 @@ public final class WaterWorld {
 		if (level == null) {
 			return;
 		}
+		this.clientTicks++;
+		this.pendingRemovals.removeIf(r -> {
+			if (this.clientTicks < r.dueTick()) {
+				return false;
+			}
+			BlockState now = level.getBlockState(r.pos());
+			if (now.isAir() || r.material().amount(now) == 0 && Material.of(now) != null) {
+				this.removeMaterial(r.pos(), r.y0(), 1.0, r.material());
+			}
+			// Anything else (a piston, a block) took the place: the simulation pushes the fluid out of it.
+			return true;
+		});
 		if (WaterSettings.resolution != this.builtResolution || WaterSettings.sandResolution != this.builtSandResolution) {
 			this.builtResolution = WaterSettings.resolution;
 			this.builtSandResolution = WaterSettings.sandResolution;
@@ -528,6 +555,11 @@ public final class WaterWorld {
 		java.util.EnumMap<Material, ByteArrayList> amountsBy = new java.util.EnumMap<>(Material.class);
 		LongOpenHashSet seen = new LongOpenHashSet();
 		Material[] found = new Material[1];
+		// Blocks waiting to be removed (just emptied with a bucket...) must not be refilled from the particles still there.
+		LongOpenHashSet removing = new LongOpenHashSet();
+		for (PendingRemoval pr : this.pendingRemovals) {
+			removing.add(pr.pos().asLong());
+		}
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 		int i = 0;
 		for (int z = 0; z < f.dz(); z++) {
@@ -538,7 +570,7 @@ public final class WaterWorld {
 					seen.add(key);
 					BlockState state = level.getBlockState(pos);
 					int current = amountOfGroup(state, base, found);
-					if ((current == 0 && !state.isAir()) || RealisticWaterBlock.isInfinite(state)) {
+					if ((current == 0 && !state.isAir()) || RealisticWaterBlock.isInfinite(state) || removing.contains(key)) {
 						continue;
 					}
 					Material have = current > 0 ? found[0] : null;

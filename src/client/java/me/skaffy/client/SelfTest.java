@@ -153,6 +153,24 @@ public final class SelfTest {
 					mc.player.connection.sendCommand(String.format("fill %d %d %d %d %d %d minecraft:stone",
 						pitOrigin.getX() - 1, pitOrigin.getY() - 3, pitOrigin.getZ() + 5, pitOrigin.getX() + 1, pitOrigin.getY() - 2, pitOrigin.getZ() + 7));
 				}
+				// -Drealisticwater.selftest.piston=true (pit scene): a piston in the pit wall pushes into the water, twice.
+				if (PIT && Boolean.getBoolean("realisticwater.selftest.piston") && pitOrigin != null) {
+					int f = frames() - frameMark;
+					int px = pitOrigin.getX() - 3;
+					int py = pitOrigin.getY() - 1;
+					int pz = pitOrigin.getZ() + 6;
+					if (f == 60 && ticks % 4 == 0) {
+						RealisticWater.LOGGER.warn("[selftest] before piston | {}", WaterWorld.get().statsLine());
+						mc.player.connection.sendCommand(String.format("setblock %d %d %d minecraft:piston[facing=east]", px, py, pz));
+						mc.player.connection.sendCommand(String.format("setblock %d %d %d minecraft:redstone_block", px - 1, py, pz));
+					}
+					if (f == 80 && ticks % 4 == 0) {
+						mc.player.connection.sendCommand(String.format("setblock %d %d %d minecraft:air", px - 1, py, pz));
+					}
+					if (f == 95 && ticks % 4 == 0) {
+						mc.player.connection.sendCommand(String.format("setblock %d %d %d minecraft:redstone_block", px - 1, py, pz));
+					}
+				}
 				if (SOLIDS && Boolean.getBoolean("realisticwater.selftest.blockIn") && frames() - frameMark == 60) {
 					RealisticWater.LOGGER.warn("[selftest] before blocks | {}", WaterWorld.get().statsLine());
 					for (int k = 1; k <= 3; k++) {
