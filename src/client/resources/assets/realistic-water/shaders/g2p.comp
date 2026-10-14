@@ -1,0 +1,266 @@
+#version 430 core
+#define WITH_VEL_OLD
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(std430, binding = 1) readonly buffer Src { Particle src[]; };
+layout(std430, binding = 2) writeonly buffer Dst { Particle dst[]; };
+layout(std430, binding = 3) buffer Counters { uint counters[]; };
+layout(std430, binding = 4) readonly buffer Vel { float vel[]; };
+layout(std430, binding = 5) readonly buffer VelOld { float velOld[]; };
+layout(std430, binding = 6) readonly buffer Flags { uint cellFlags[]; };
+layout(std430, binding = 7) readonly buffer Static { uint staticSolid[]; };
+layout(std430, binding = 8) readonly buffer Pot { vec2 potential[]; };
+layout(std430, binding = 9) writeonly buffer WwDst { Particle wwDst[]; };
+layout(std430, binding = 10) readonly buffer WwCount { int wwCount[]; };
+// Mixed regions: cellMix (count, slot sums; stride 4). Uniform regions: just cellCount (stride 1).
+layout(std430, binding = 11) readonly buffer Mix { int cellMixI[]; };
+#define MIX_STRIDE (uniformSlot() < 0 ? 4 : 1)
+layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
+#include "compact.glsl"
+
+#include "gridsample.glsl"
+
+bool solidAt(vec3 p) {
+    ivec3 c = ivec3(floor(p));
+    return inGrid(c) && staticSolid[cellIndex(c)] != 0u;
+}
+
+int countAt(ivec3 c) {
+    return inBox(c) ? cellMixI[cellIndex(c) * MIX_STRIDE] : 0;
+}
+
+bool waterFilm(vec3 x, vec4 film, inout vec3 v, inout vec3 dx, inout float dryness) {
+    ivec3 c = ivec3(floor(x));
+    int n27 = 0;
+    int column = 0;
+    for (int k = 0; k < 27; k++) {
+        ivec3 o = ivec3(k % 3, (k / 3) % 3, k / 9) - 1;
+        int n = countAt(c + o);
+        n27 += n;
+        column += o.y >= 0 ? n : 0;
+    }
+    if (solidAt(x - vec3(0.0, 1.0, 0.0))) {
+        float depth = float(column) / (9.0 * G.simA.y);
+        float thin = clamp(1.0 - depth / max(G.matB.w, 1e-3), 0.0, 1.0);
+        float speed = length(v.xz);
+        bool groundAhead = speed < 1e-3 || solidAt(x + vec3(v.x / speed, -1.0, v.z / speed));
+        if (thin > 0.0 && groundAhead) {
+            float damp = exp(-film.x * thin * DT);
+            v.xz *= damp;
+            dx.xz *= damp;
+        }
+    }
+    float res = G.camGrid.w;
+    if (n27 < int(G.matB.z) && length(v) < 1.5 * res) {
+        dryness += DT / max(film.y, 1e-3);
+    } else {
+        dryness = 0.0;
+    }
+    return dryness < 1.0;
+}
+
+vec3 collideStatic(vec3 x, vec3 xn, inout vec3 v) {
+    if (solidAt(x)) {
+        ivec3 c = ivec3(floor(x));
+        const ivec3 OUT[6] = ivec3[](ivec3(0, 1, 0), ivec3(1, 0, 0), ivec3(-1, 0, 0), ivec3(0, 0, 1), ivec3(0, 0, -1), ivec3(0, -1, 0));
+        for (int k = 0; k < 6; k++) {
+            ivec3 nc = c + OUT[k];
+            if (!inGrid(nc) || staticSolid[cellIndex(nc)] == 0u) {
+                v = vec3(OUT[k]) * 2.0;
+                return vec3(nc) + 0.5;
+            }
+        }
+        return x;
+    }
+    vec3 r = x;
+    for (int k = 0; k < 3; k++) {
+        int a = k == 0 ? 1 : (k == 1 ? 0 : 2); // y first, then x, then z
+        float ra = getAxis(r, a);
+        float xa = getAxis(xn, a);
+        vec3 t = setAxis(r, a, xa);
+        if (!solidAt(t)) {
+            r = t;
+        } else {
+            float edge = xa > ra ? floor(ra) + 0.999 : floor(ra) + 0.001;
+            t = setAxis(r, a, edge);
+            if (!solidAt(t)) {
+                r = t;
+            }
+            v = setAxis(v, a, 0.0);
+        }
+    }
+    return r;
+}
+
+vec3 collideEntities(vec3 x, inout vec3 v) {
+    for (int e = 0; e < numEntities(); e++) {
+        vec3 lo = entMin(e);
+        vec3 hi = entMax(e);
+        if (any(lessThan(x, lo)) || any(greaterThan(x, hi))) {
+            continue;
+        }
+        vec3 dLo = x - lo;
+        vec3 dHi = hi - x;
+        vec3 ve = entVel(e);
+        int axis = 0;
+        float best = 1e9;
+        float dir = 1.0;
+        for (int a = 0; a < 3; a++) {
+            float la = getAxis(dLo, a);
+            float ha = getAxis(dHi, a);
+            if (la < best) { best = la; axis = a; dir = -1.0; }
+            if (ha < best) { best = ha; axis = a; dir = 1.0; }
+        }
+        vec3 pushed = setAxis(x, axis, dir > 0.0 ? getAxis(hi, axis) + 0.01 : getAxis(lo, axis) - 0.01);
+        if (solidAt(pushed)) {
+            // No room on that side (pinned between the entity and a wall): squeeze out over the top instead of being
+            // crammed into the wall, which packs material into hard lumps.
+            vec3 over = vec3(x.x, hi.y + 0.01, x.z);
+            if (!solidAt(over)) {
+                pushed = over;
+                axis = 1;
+                dir = 1.0;
+            }
+        }
+        x = pushed;
+        v = setAxis(v, axis, dir * max(dir * getAxis(v, axis), dir * getAxis(ve, axis)));
+    }
+    return x;
+}
+
+void emitWhitewater(uint id, vec3 x, vec3 v) {
+    ivec3 c = ivec3(floor(x));
+    if (!inBox(c)) {
+        return;
+    }
+    vec2 pot = potential[cellIndex(c)];
+    float speed = length(v) * CELL_H;
+    float energy = 0.5 * speed * speed;
+    float iTA = clampPhi(pot.x, G.wwB.x, G.wwB.y);
+    float iWC = clampPhi(pot.y * CELL_H, G.wwB.z, G.wwB.w);
+    float iK = clampPhi(energy, G.wwA.z, G.wwA.w);
+    float amount = iK * (G.wwA.x * iTA + G.wwA.y * iWC) * DT;
+    amount *= max(0.0, 1.0 - float(wwCount[cellIndex(c)]) / float(max(G.flags.w, 1)));
+    if (amount <= 0.0) {
+        return;
+    }
+    uint seed = hash(id * 1664525u + uint(pc.a.w));
+    int count = int(amount) + (rand(seed) < fract(amount) ? 1 : 0);
+    count = min(count, int(G.wwD.w));
+    for (int k = 0; k < count; k++) {
+        uint o = atomicAdd(counters[pc.b.x], 1u);
+        if (o >= uint(G.caps.y)) {
+            return;
+        }
+        vec3 offset = randInSphere(seed) * 0.6;
+        float life = mix(G.wwC.x, G.wwC.y, rand(seed));
+        vec3 jitter = randInSphere(seed) * 0.15 * length(v);
+        wwDst[o] = Particle(vec4(x + offset, life), vec4(v + jitter, 1.0));
+    }
+}
+
+// Advances particle i. Returns false when it dies this step (or the slot is past the live count).
+bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out float mixOut, out bool griddedOut) {
+    xnOut = vec3(0.0);
+    vOut = vec3(0.0);
+    tagOut = 0.0;
+    mixOut = 0.0;
+    griddedOut = false;
+    if (i >= counters[pc.a.x]) {
+        return false;
+    }
+    Particle p = src[i];
+    if (p.pos.w < 0.0) {
+        return false;
+    }
+    vec3 x = p.pos.xyz;
+    vec3 v = p.vel.xyz;
+    float tag = p.pos.w;
+    vec4 mw = uniformSlot() >= 0 ? vec4(0.0) : mixWeights(p.vel.w);
+    vec4 mat = uniformSlot() >= 0 ? slotWeights(uniformSlot()) : mw;
+    float maxSpeed = G.simB.x;
+    bool gridded = inInnerBox(x);
+    vec3 dx;
+    if (gridded) {
+        vec3 uNew = sampleVel(x);
+        vec3 uOld = sampleVelOld(x);
+        v = mix(uNew, v + (uNew - uOld), mixFluidA(mat).w);
+        dx = DT * sampleVel(x + 0.5 * DT * uNew);
+        vec4 film = mixFluidC(mat);
+        if (!waterFilm(x, film, v, dx, tag)) {
+            return false;
+        }
+        if (film.w > 0.0) {
+            // Thick fluids (lava): bleed off sideways motion so they creep and pile up instead of running like water.
+            float damp = exp(-film.w * DT);
+            v.xz *= damp;
+            dx.xz *= damp;
+        }
+        // Mixing: relax towards the cell's mean mixture. Codes are quantised to 1/1023, so round stochastically or slow
+        // mixing would never move a particle off its code.
+        ivec3 mc = ivec3(floor(x));
+        if (uniformSlot() < 0 && inBox(mc) && G.mixInfo.x > 0.0) {
+            int ci = cellIndex(mc) * 4;
+            ivec4 cm = ivec4(cellMixI[ci], cellMixI[ci + 1], cellMixI[ci + 2], cellMixI[ci + 3]);
+            if (cm.x > 1) {
+                vec4 mean = mixSums(cm) / (float(cm.x) * MIX_FP);
+                mw = mix(mw, mean, 1.0 - exp(-G.mixInfo.x * DT));
+            }
+        }
+    } else {
+        v += G.gravityDt.xyz * DT;
+        dx = DT * v;
+    }
+    float gw = applyCarriers(x, v, float(countAt(ivec3(floor(x)))) / G.simA.y);
+    if (gw > 0.0) {
+        dx = mix(dx, DT * v, gw);
+        tag = 0.0; // carried water doesn't dry out
+    }
+    float s = length(v);
+    if (s > maxSpeed) {
+        v *= maxSpeed / s;
+    }
+    float dl = length(dx);
+    float maxStep = maxSpeed * DT;
+    if (dl > maxStep) {
+        dx *= maxStep / dl;
+    }
+    vec3 xn = collideStatic(x, x + dx, v);
+    xn = collideEntities(xn, v);
+    if (any(isnan(xn)) || any(isinf(xn)) || any(isnan(v))) {
+        return false;
+    }
+
+    float killMargin = G.killInfo.y;
+    if (any(lessThan(xn, vec3(-killMargin))) || any(greaterThanEqual(xn, vec3(NX, NY, NZ) + killMargin)) || xn.y < G.killInfo.x) {
+        return false;
+    }
+    xnOut = xn;
+    vOut = v;
+    tagOut = tag;
+    uint seed = hash(i * 2246822519u + uint(pc.a.w) * 3266489917u);
+    mixOut = uniformSlot() >= 0 ? p.vel.w : mixCodeQ(floor(normalizeMix(mw).yz * 1023.0 + vec2(rand(seed), rand(seed))));
+    griddedOut = gridded;
+    return true;
+}
+
+void main() {
+    // No early returns before the compaction barriers: every invocation of the workgroup has to reach them.
+    compactBegin();
+    uint i = GID_U;
+    vec3 xn;
+    vec3 v;
+    float tag;
+    float mixCodeOut;
+    bool gridded;
+    bool alive = advect(i, xn, v, tag, mixCodeOut, gridded);
+    uint o = compactReserve(alive, alive ? length(v) : 0.0, true, uint(pc.a.y));
+    bool wrote = alive && o < uint(G.caps.x);
+    if (wrote) {
+        dst[o] = Particle(vec4(xn, tag), vec4(v, mixCodeOut));
+    }
+    compactBounds(wrote, uvec3(ivec3(floor(xn)) + AABB_BIAS));
+    if (wrote && pc.b.y != 0 && gridded) {
+        emitWhitewater(i, xn, v);
+    }
+}

@@ -1,0 +1,273 @@
+#version 430 core
+#include "common.glsl"
+#include "mpm.glsl"
+layout(local_size_x = 256) in;
+layout(std430, binding = 1) readonly buffer Src { Particle src[]; };
+layout(std430, binding = 2) writeonly buffer Dst { Particle dst[]; };
+layout(std430, binding = 3) buffer Counters { uint counters[]; };
+layout(std430, binding = 4) readonly buffer Grid { vec4 grid[]; };
+layout(std430, binding = 5) readonly buffer StateSrc { float stateSrc[]; };
+layout(std430, binding = 6) writeonly buffer StateDst { float stateDst[]; };
+layout(std430, binding = 7) readonly buffer Static { uint staticSolid[]; };
+layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
+#include "compact.glsl"
+
+#define C_AWAKE 14
+
+bool solidAt(vec3 p) {
+    ivec3 c = ivec3(floor(p));
+    return inGrid(c) && staticSolid[cellIndex(c)] != 0u;
+}
+
+vec3 collideStatic(vec3 x, vec3 xn, inout vec3 v) {
+    if (solidAt(x)) {
+        ivec3 c = ivec3(floor(x));
+        const ivec3 OUT[6] = ivec3[](ivec3(0, 1, 0), ivec3(1, 0, 0), ivec3(-1, 0, 0), ivec3(0, 0, 1), ivec3(0, 0, -1), ivec3(0, -1, 0));
+        for (int k = 0; k < 6; k++) {
+            ivec3 nc = c + OUT[k];
+            if (!inGrid(nc) || staticSolid[cellIndex(nc)] == 0u) {
+                v = vec3(0.0);
+                return vec3(nc) + 0.5;
+            }
+        }
+        return x;
+    }
+    vec3 r = x;
+    for (int k = 0; k < 3; k++) {
+        int a = k == 0 ? 1 : (k == 1 ? 0 : 2); // y first, then x, then z
+        vec3 t = setAxis(r, a, getAxis(xn, a));
+        if (!solidAt(t)) {
+            r = t;
+        } else {
+            v = setAxis(v, a, 0.0);
+        }
+    }
+    return r;
+}
+
+vec3 collideEntities(vec3 x, inout vec3 v) {
+    for (int e = 0; e < numEntities(); e++) {
+        vec3 lo = entMin(e);
+        vec3 hi = entMax(e);
+        if (any(lessThan(x, lo)) || any(greaterThan(x, hi))) {
+            continue;
+        }
+        vec3 dLo = x - lo;
+        vec3 dHi = hi - x;
+        vec3 ve = entVel(e);
+        int axis = 0;
+        float best = 1e9;
+        float dir = 1.0;
+        for (int a = 0; a < 3; a++) {
+            float la = getAxis(dLo, a);
+            float ha = getAxis(dHi, a);
+            if (la < best) { best = la; axis = a; dir = -1.0; }
+            if (ha < best) { best = ha; axis = a; dir = 1.0; }
+        }
+        vec3 pushed = setAxis(x, axis, dir > 0.0 ? getAxis(hi, axis) + 0.01 : getAxis(lo, axis) - 0.01);
+        if (solidAt(pushed)) {
+            // No room on that side (pinned between the entity and a wall): squeeze out over the top instead of being
+            // crammed into the wall, which packs material into hard lumps.
+            vec3 over = vec3(x.x, hi.y + 0.01, x.z);
+            if (!solidAt(over)) {
+                pushed = over;
+                axis = 1;
+                dir = 1.0;
+            }
+        }
+        x = pushed;
+        v = setAxis(v, axis, dir * max(dir * getAxis(v, axis), dir * getAxis(ve, axis)));
+    }
+    return x;
+}
+
+struct Advected {
+    vec3 x;
+    vec3 v;
+    float spread;
+    float tag;
+    mat3 C;
+    mat3 F;
+    float tau6[6];
+    float rest;
+    float damage;
+    bool asleep;
+};
+
+// Advances particle i. Returns false when it dies this step (or the slot is past the live count).
+bool advect(uint i, out Advected r) {
+    r.x = vec3(0.0);
+    r.v = vec3(0.0);
+    r.spread = 1.0;
+    r.tag = 0.0;
+    r.C = mat3(0.0);
+    r.F = mat3(1.0);
+    r.tau6 = float[](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    r.rest = 0.0;
+    r.damage = 0.0;
+    r.asleep = false;
+    if (i >= counters[pc.a.x]) {
+        return false;
+    }
+    Particle p = src[i];
+    if (p.pos.w < 0.0) {
+        return false;
+    }
+    vec3 x = p.pos.xyz;
+    int si = int(i) * STATE_STRIDE;
+    bool valid = p.pos.w >= 0.5;
+    mat3 F = valid ? LOAD_MAT(stateSrc, si + 9) : mat3(1.0);
+    float tau6[6] = float[](0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    float rest = 0.0;
+    int slot = grainSlot(p.vel.w);
+    bool broken = grainBroken(p.vel.w);
+    float damage = broken ? 1.0 : 0.0;
+    if (valid) {
+        for (int k = 0; k < 6; k++) {
+            tau6[k] = stateSrc[si + STATE_TAU + k];
+        }
+        rest = stateSrc[si + STATE_REST];
+        damage = clamp(stateSrc[si + STATE_DAMAGE], 0.0, 1.0);
+    }
+    vec3 v;
+    mat3 C = mat3(0.0);
+    float spread = max(p.pos.w, 1.0);
+    bool asleep = false;
+    float pack = 1.0;
+    vec3 packGrad = vec3(0.0);
+    if (inInnerBox(x)) {
+        v = vec3(0.0);
+        float density = 0.0;
+        Stencil s = stencil(x);
+        for (int k = 0; k < 3; k++) {
+            for (int j = 0; j < 3; j++) {
+                for (int ii = 0; ii < 3; ii++) {
+                    ivec3 c = s.base + ivec3(ii, j, k);
+                    float w = s.w[ii].x * s.w[j].y * s.w[k].z;
+                    vec4 g = grid[cellIndex(c)];
+                    vec3 dpos = vec3(ii, j, k) - s.fx;
+                    v += w * g.xyz;
+                    C += 4.0 * w * outerProduct(g.xyz, dpos);
+                    density += w * g.w;
+                    packGrad += 4.0 * w * g.w * dpos;
+                }
+            }
+        }
+        pack = density * MPM_VOLUME;
+        packGrad *= MPM_VOLUME;
+        if (rest >= MPM_REST_TIME) {
+            rest = length(v) > MPM_WAKE_SPEED ? 0.0 : rest;
+        } else {
+            rest = length(v) < MPM_REST_SPEED ? rest + DT : 0.0;
+        }
+        asleep = rest >= MPM_REST_TIME;
+        if (asleep) {
+            v = vec3(0.0);
+            C = mat3(0.0);
+        } else {
+            mat3 tau;
+            vec4 gm = G.grainA[slot];
+            vec4 gc = G.grainC[slot];
+            float squeeze = C[0][0] + C[1][1] + C[2][2];
+            // Breakable materials (toughness > 0) lose their cohesion as they yield; damage only grows, except that
+            // materials that heal (snow, clay) knit back together while being pressed.
+            float cohesion = gc.x > 0.0 ? gm.y * (1.0 - damage) : gm.y;
+            float plastic;
+            F = projectSand((mat3(1.0) + DT * C) * F, squeeze, gm.x, cohesion, tau, plastic);
+            if (gc.x > 0.0) {
+                damage = min(damage + plastic / gc.x, 1.0);
+                if (gc.y > 0.0 && squeeze < 0.0) {
+                    damage = max(damage + gc.y * squeeze * DT, 0.0);
+                }
+            }
+            tau6 = float[](tau[0][0], tau[1][1], tau[2][2], tau[1][0], tau[2][0], tau[2][1]);
+            // Loose piles get their grains spread to fill the gaps; isolated bits of spray keep tight grains (spread out, a
+            // lone particle's grains would turn into a fluffy ball).
+            spread = mix(1.0, clamp(sqrt(1.0 / max(density * MPM_VOLUME, 0.05)), 1.0, 3.0), smoothstep(0.15, 0.45, density * MPM_VOLUME));
+        }
+    } else {
+        v = p.vel.xyz + G.gravityDt.xyz * DT;
+        rest = 0.0;
+    }
+    // Both corrections below move particles a little (a position shift per step) instead of changing their velocity: velocity
+    // kicks would add up step after step and launch lone grains off at absurd speeds.
+    vec3 shift = vec3(0.0);
+    // Sparse spray: particles sharing a grid cell get the same velocity and would fly on as one clump forever. A small random
+    // wander, stronger the sparser it is, lets clumps drift apart into separate grains.
+    if (!asleep && pack < 0.5 && inInnerBox(x)) {
+        uint js = hash(i * 1597334677u + uint(pc.a.w) * 3812015801u);
+        shift += randInSphere(js) * (0.5 - pack) * 2.0 * MPM_SPRAY_SCATTER * DT;
+    }
+    // Over-packed material (squeezed by the grab tool, pressed against walls...) spreads back out towards normal density
+    // instead of staying a hard ball forever: step down the density gradient, further the more it is over-packed.
+    float excess = pack - 1.3;
+    if (excess > 0.0 && dot(packGrad, packGrad) > 1e-8) {
+        shift -= normalize(packGrad) * min(excess, 1.0) * 4.0 * DT;
+        rest = 0.0;
+        asleep = false;
+    }
+    if (applyCarriers(x, v, pack) > 0.0) {
+        rest = 0.0;
+        asleep = false;
+    }
+    float maxSpeed = G.simB.x;
+    float sp = length(v);
+    if (sp > maxSpeed) {
+        v *= maxSpeed / sp;
+    }
+    vec3 xn = asleep ? x : collideStatic(x, x + DT * v + shift, v);
+    vec3 pushed = collideEntities(xn, v);
+    if (pushed != xn) {
+        rest = 0.0;
+        asleep = false;
+    }
+    xn = pushed;
+    if (any(isnan(xn)) || any(isinf(xn)) || any(isnan(v)) || any(isnan(F[0])) || any(isnan(F[1])) || any(isnan(F[2]))) {
+        return false;
+    }
+    float killMargin = G.killInfo.y;
+    if (any(lessThan(xn, vec3(-killMargin))) || any(greaterThanEqual(xn, vec3(NX, NY, NZ) + killMargin)) || xn.y < G.killInfo.x) {
+        return false;
+    }
+    r.x = xn;
+    r.v = v;
+    r.spread = spread;
+    bool nowBroken = damage >= 0.999 ? true : (damage < 0.5 ? false : broken);
+    r.tag = grainTag(slot, nowBroken, grainLook(p.vel.w));
+    r.damage = damage;
+    r.C = C;
+    r.F = F;
+    r.tau6 = tau6;
+    r.rest = rest;
+    r.asleep = asleep;
+    return true;
+}
+
+void main() {
+    // No early returns before the compaction barriers: every invocation of the workgroup has to reach them.
+    compactBegin();
+    uint i = GID_U;
+    Advected r;
+    bool alive = advect(i, r);
+    uint o = compactReserve(alive, alive ? length(r.v) : 0.0, !r.asleep, uint(pc.a.y));
+    if (gl_LocalInvocationIndex == 0u && compactAwake() > 0u) {
+        atomicAdd(counters[C_AWAKE], compactAwake());
+    }
+    bool wrote = alive && o < uint(G.caps.x);
+    if (wrote) {
+        dst[o] = Particle(vec4(r.x, r.spread), vec4(r.v, r.tag));
+        int so = int(o) * STATE_STRIDE;
+        for (int c = 0; c < 3; c++) {
+            for (int rr = 0; rr < 3; rr++) {
+                stateDst[so + 3 * c + rr] = r.C[c][rr];
+                stateDst[so + 9 + 3 * c + rr] = r.F[c][rr];
+            }
+        }
+        for (int k = 0; k < 6; k++) {
+            stateDst[so + STATE_TAU + k] = r.tau6[k];
+        }
+        stateDst[so + STATE_REST] = r.rest;
+        stateDst[so + STATE_DAMAGE] = r.damage;
+    }
+    compactBounds(wrote, uvec3(ivec3(floor(r.x)) + AABB_BIAS));
+}

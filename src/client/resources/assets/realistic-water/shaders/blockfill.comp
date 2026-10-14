@@ -1,0 +1,97 @@
+#version 430 core
+#include "common.glsl"
+layout(local_size_x = 64) in;
+layout(std430, binding = 1) readonly buffer Count { int cellCount[]; };
+layout(std430, binding = 2) readonly buffer Flags { uint cellFlags[]; };
+layout(std430, binding = 3) writeonly buffer Fill { uint fill[]; };
+#ifdef MPM
+layout(std430, binding = 4) readonly buffer Grid { vec4 grid[]; };
+#else
+layout(std430, binding = 4) readonly buffer Vel { float vel[]; };
+#endif
+layout(std430, binding = 5) readonly buffer Mix { ivec4 cellMix[]; };
+#include "mixgrid.glsl"
+// Lava: particles that turned to stone per cell (react.comp); read when G.mixInfo.z is set.
+layout(std430, binding = 6) readonly buffer Solidify { int solidify[]; };
+layout(std140, binding = 7) uniform PC { ivec4 a; ivec4 b; } pc;
+
+bool fluidAt(ivec3 c) {
+    return inBox(c) && (cellFlags[cellIndex(c)] & 0xFFu) == CELL_FLUID;
+}
+
+float cellSpeed(ivec3 c) {
+#ifdef MPM
+    return length(grid[cellIndex(c)].xyz);
+#else
+    vec3 u = 0.5 * vec3(
+        vel[faceIndex(0, c)] + vel[faceIndex(0, c + ivec3(1, 0, 0))],
+        vel[faceIndex(1, c)] + vel[faceIndex(1, c + ivec3(0, 1, 0))],
+        vel[faceIndex(2, c)] + vel[faceIndex(2, c + ivec3(0, 0, 1))]);
+    return length(u);
+#endif
+}
+
+void main() {
+    int t = int(GID_U);
+    ivec3 nb = pc.b.xyz;
+    if (t >= nb.x * nb.y * nb.z) {
+        return;
+    }
+    int res = int(G.camGrid.w);
+    ivec3 block = pc.a.xyz + ivec3(t % nb.x, (t / nb.x) % nb.y, t / (nb.x * nb.y));
+    float sum = 0.0;
+    float speed = 0.0;
+    vec4 mixSum = vec4(0.0);
+#ifdef MPM
+    float grains[8] = float[](0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+#endif
+    float solid = 0.0;
+    bool lava = G.mixInfo.z > 0.5;
+    for (int k = 0; k < res * res * res; k++) {
+        ivec3 c = block * res + ivec3(k % res, (k / res) % res, k / (res * res));
+        if (!inBox(c)) {
+            continue;
+        }
+        int i = cellIndex(c);
+        if (lava) {
+            solid += float(solidify[i]);
+        }
+        uint f = cellFlags[i];
+        if ((f & 0xFFu) == CELL_SOLID && (f >> 8) != 0u && (f & CELL_GRANULAR_BIT) == 0u) {
+            if (fluidAt(c + ivec3(3, 0, 0)) || fluidAt(c - ivec3(3, 0, 0)) || fluidAt(c + ivec3(0, 0, 3)) || fluidAt(c - ivec3(0, 0, 3))) {
+                sum += G.simA.y;
+            }
+        } else {
+            sum += float(cellCount[i]);
+            if (uniformSlot() < 0) {
+#ifdef MPM
+                for (int s = 0; s < 8; s++) {
+                    grains[s] += float(grainCount(cellMix[i], s));
+                }
+#else
+                mixSum += mixSums(cellMix[i]);
+#endif
+            }
+            if ((f & 0xFFu) == CELL_FLUID) {
+                speed = max(speed, cellSpeed(c));
+            }
+        }
+    }
+    uint full = uint(clamp(sum / (G.simA.y * float(res * res * res)), 0.0, 1.0) * 255.0 + 0.5);
+    uint fast = uint(clamp(speed / float(res) * 16.0, 0.0, 255.0));
+    // Bits 16..23: the material slot most of this block is made of (decides which block the host writes).
+#ifdef MPM
+    int best = 0;
+    for (int s = 1; s < 8; s++) {
+        if (grains[s] > grains[best]) {
+            best = s;
+        }
+    }
+    uint slot = uint(uniformSlot() >= 0 ? uniformSlot() : best);
+#else
+    uint slot = uint(uniformSlot() >= 0 ? uniformSlot() : dominantSlot(mixSum));
+#endif
+    // Bits 24..31: how much of the block (fraction of a full block's particles) solidified since the last readback.
+    uint stone = uint(clamp(solid / (G.simA.y * float(res * res * res)), 0.0, 1.0) * 255.0 + 0.5);
+    fill[t] = full | (fast << 8) | (slot << 16) | (stone << 24);
+}

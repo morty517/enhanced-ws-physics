@@ -1,0 +1,20 @@
+{
+  "block.realistic-water.realistic_water": "Реалистичная вода",
+  "block.realistic-water.realistic_sand": "Реалистичный песок",
+  "item.realistic-water.realistic_water_bucket": "Ведро реалистичной воды",
+  "block.realistic-water.realistic_milk": "Реалистичное молоко",
+  "item.realistic-water.realistic_milk_bucket": "Ведро реалистичного молока",
+  "block.realistic-water.realistic_red_sand": "Реалистичный красный песок",
+  "block.realistic-water.realistic_gravel": "Реалистичный гравий",
+  "block.realistic-water.realistic_suspicious_milk": "Подозрительное молоко",
+  "item.realistic-water.realistic_suspicious_milk_bucket": "Ведро подозрительного молока",
+  "block.realistic-water.realistic_lava": "Реалистичная лава",
+  "item.realistic-water.realistic_lava_bucket": "Ведро реалистичной лавы",
+  "block.realistic-water.realistic_snow": "Реалистичный снег",
+  "block.realistic-water.realistic_sandstone": "Реалистичный песчаник",
+  "block.realistic-water.realistic_dirt": "Реалистичная земля",
+  "block.realistic-water.realistic_clay": "Реалистичная глина",
+  "block.realistic-water.realistic_suspicious_curd": "Подозрительный творог",
+  "key.realistic-water.grab": "Схватить материал",
+  "key.categories.realistic-water": "Realistic Water"
+}
