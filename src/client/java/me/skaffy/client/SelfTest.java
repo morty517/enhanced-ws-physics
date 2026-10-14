@@ -168,7 +168,11 @@ public final class SelfTest {
 						Vec3 at = groundAhead(mc, 7.5, 0.0).add(0.0, 0.8, 0.0);
 						Vec3 d = at.subtract(mc.player.getEyePosition());
 						float aim = (float) Math.toDegrees(-Math.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z)));
-						mc.player.setXRot(aim - Math.min(f - grabFrame, 40) * 0.5F);
+						boolean stay = Boolean.getBoolean("realisticwater.selftest.grabStay");
+						mc.player.setXRot(aim - (stay ? 0.0F : Math.min(f - grabFrame, 40) * 0.5F));
+						if (stay && f - grabFrame > 50) {
+							me.skaffy.client.water.Grabber.testRelease();
+						}
 					}
 				}
 				logProgress();

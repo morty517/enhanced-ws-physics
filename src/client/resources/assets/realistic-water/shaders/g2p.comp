@@ -111,7 +111,18 @@ vec3 collideEntities(vec3 x, inout vec3 v) {
             if (la < best) { best = la; axis = a; dir = -1.0; }
             if (ha < best) { best = ha; axis = a; dir = 1.0; }
         }
-        x = setAxis(x, axis, dir > 0.0 ? getAxis(hi, axis) + 0.01 : getAxis(lo, axis) - 0.01);
+        vec3 pushed = setAxis(x, axis, dir > 0.0 ? getAxis(hi, axis) + 0.01 : getAxis(lo, axis) - 0.01);
+        if (solidAt(pushed)) {
+            // No room on that side (pinned between the entity and a wall): squeeze out over the top instead of being
+            // crammed into the wall, which packs material into hard lumps.
+            vec3 over = vec3(x.x, hi.y + 0.01, x.z);
+            if (!solidAt(over)) {
+                pushed = over;
+                axis = 1;
+                dir = 1.0;
+            }
+        }
+        x = pushed;
         v = setAxis(v, axis, dir * max(dir * getAxis(v, axis), dir * getAxis(ve, axis)));
     }
     return x;
@@ -200,7 +211,7 @@ bool advect(uint i, out vec3 xnOut, out vec3 vOut, out float tagOut, out float m
         v += G.gravityDt.xyz * DT;
         dx = DT * v;
     }
-    float gw = applyCarriers(x, v);
+    float gw = applyCarriers(x, v, float(countAt(ivec3(floor(x)))) / G.simA.y);
     if (gw > 0.0) {
         dx = mix(dx, DT * v, gw);
         tag = 0.0; // carried water doesn't dry out

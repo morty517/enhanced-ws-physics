@@ -64,7 +64,18 @@ vec3 collideEntities(vec3 x, inout vec3 v) {
             if (la < best) { best = la; axis = a; dir = -1.0; }
             if (ha < best) { best = ha; axis = a; dir = 1.0; }
         }
-        x = setAxis(x, axis, dir > 0.0 ? getAxis(hi, axis) + 0.01 : getAxis(lo, axis) - 0.01);
+        vec3 pushed = setAxis(x, axis, dir > 0.0 ? getAxis(hi, axis) + 0.01 : getAxis(lo, axis) - 0.01);
+        if (solidAt(pushed)) {
+            // No room on that side (pinned between the entity and a wall): squeeze out over the top instead of being
+            // crammed into the wall, which packs material into hard lumps.
+            vec3 over = vec3(x.x, hi.y + 0.01, x.z);
+            if (!solidAt(over)) {
+                pushed = over;
+                axis = 1;
+                dir = 1.0;
+            }
+        }
+        x = pushed;
         v = setAxis(v, axis, dir * max(dir * getAxis(v, axis), dir * getAxis(ve, axis)));
     }
     return x;
@@ -122,6 +133,8 @@ bool advect(uint i, out Advected r) {
     mat3 C = mat3(0.0);
     float spread = max(p.pos.w, 1.0);
     bool asleep = false;
+    float pack = 1.0;
+    vec3 packGrad = vec3(0.0);
     if (inInnerBox(x)) {
         v = vec3(0.0);
         float density = 0.0;
@@ -136,9 +149,12 @@ bool advect(uint i, out Advected r) {
                     v += w * g.xyz;
                     C += 4.0 * w * outerProduct(g.xyz, dpos);
                     density += w * g.w;
+                    packGrad += 4.0 * w * g.w * dpos;
                 }
             }
         }
+        pack = density * MPM_VOLUME;
+        packGrad *= MPM_VOLUME;
         if (rest >= MPM_REST_TIME) {
             rest = length(v) > MPM_WAKE_SPEED ? 0.0 : rest;
         } else {
@@ -171,7 +187,15 @@ bool advect(uint i, out Advected r) {
         v = p.vel.xyz + G.gravityDt.xyz * DT;
         rest = 0.0;
     }
-    if (applyCarriers(x, v) > 0.0) {
+    // Over-packed material (squeezed by the grab tool, piled impacts...) spreads back out towards normal density instead of
+    // staying a hard ball forever: push down the density gradient, harder the more it is over-packed.
+    float excess = pack - 1.3;
+    if (excess > 0.0 && dot(packGrad, packGrad) > 1e-8) {
+        v -= normalize(packGrad) * min(excess, 2.0) * 8.0;
+        rest = 0.0;
+        asleep = false;
+    }
+    if (applyCarriers(x, v, pack) > 0.0) {
         rest = 0.0;
         asleep = false;
     }

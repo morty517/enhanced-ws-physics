@@ -196,8 +196,11 @@ float carrierWeight(int k, vec3 x) {
     return 1.0 - smoothstep(0.8 * G.carrierA[k].w, G.carrierA[k].w, r);
 }
 
+// pack: local density relative to resting material (1 = normally packed). The shell pull stops once the piece is packed, so
+// holding the tool over a pile doesn't keep cramming material into an ever denser ball.
 // Returns the summed weight (0 = not carried).
-float applyCarriers(vec3 x, inout vec3 v) {
+float applyCarriers(vec3 x, inout vec3 v, float pack) {
+    float pull = clamp((1.1 - pack) / 0.3, 0.0, 1.0);
     float total = 0.0;
     int n = int(G.carrierInfo.x);
     for (int k = 0; k < n; k++) {
@@ -208,7 +211,7 @@ float applyCarriers(vec3 x, inout vec3 v) {
         vec3 d = G.carrierA[k].xyz - x;
         float r = length(d);
         float shell = max(r - 0.55 * G.carrierA[k].w, 0.0);
-        vec3 want = G.carrierB[k].xyz + (r > 1e-4 ? d / r : vec3(0.0)) * shell * 8.0;
+        vec3 want = G.carrierB[k].xyz + (r > 1e-4 ? d / r : vec3(0.0)) * shell * 8.0 * pull;
         // Held up: undo this step's gravity (already in v), or the piece sags to the bottom of the sphere and flattens.
         v -= G.gravityDt.xyz * DT * w;
         v = mix(v, want, w * (1.0 - exp(-40.0 * DT)));
