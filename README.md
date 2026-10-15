@@ -97,6 +97,17 @@ Hold **G** (rebindable under Controls -> Realistic Water) to pick up the simulat
 blocks. Let go and it keeps its speed, so it can be thrown. Works on fluids, lava and every granular material. Carried
 material keeps its shape (particles take on the carrier's velocity, only the outer shell is pulled in, gravity is held off).
 
+## On any server (client-only)
+
+The simulation runs on your client, so the mod also works on servers without it (vanilla, Paper/plugin servers): only you
+see the material, nothing is written into the world. Items and blocks of the mod don't exist there, so use the client tools:
+
+- `/water spawn <material> [size]` drops a cube of any material.
+- `/water hose <material>` picks the hose material; hold **H** to spray it from in front of you.
+- **Sneak + H** puts a spring of the selected fluid next to the block you look at (again to remove it), great for
+  waterfalls. `/water springs clear` removes all of them. Hose springs live only in your simulation (gone on relog).
+- `hoseSpeed`, `hoseSize` via `/water set`.
+
 ## Explosions
 
 Explosions throw simulated material outwards and shatter breakable solids near them (`explosionStrength`, 0 = off). With

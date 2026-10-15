@@ -42,6 +42,7 @@ public final class SelfTest {
 	private static int grabFrame = -1;
 	/** -Drealisticwater.selftest.throw=true (solids scene): throw snowballs at the blocks. */
 	private static boolean tntFired;
+	private static boolean hoseStarted;
 	private static int tntLogged = -1;
 	private static final boolean THROW = Boolean.getBoolean("realisticwater.selftest.throw");
 	private static final Material[] SOLID_MATERIALS = {Material.SANDSTONE, Material.DIRT, Material.CLAY, Material.SUSPICIOUS_CURD, Material.SNOW};
@@ -178,6 +179,22 @@ public final class SelfTest {
 					for (int k = 1; k <= 3; k++) {
 						Vec3 g = groundAhead(mc, 7.5, (k - 2) * 1.8);
 						mc.player.connection.sendCommand(String.format("setblock %d %d %d minecraft:stone", (int) Math.floor(g.x), (int) Math.floor(g.y), (int) Math.floor(g.z)));
+					}
+				}
+				// -Drealisticwater.selftest.hose=true: spray water for a while and put a hose spring up in the air ahead.
+				if (Boolean.getBoolean("realisticwater.selftest.hose")) {
+					int f = frames() - frameMark;
+					if (f == 20 && !hoseStarted) {
+						hoseStarted = true;
+						me.skaffy.client.water.Hose.testHold(true);
+						Vec3 g = groundAhead(mc, 5.0, -3.0);
+						WaterWorld.get().toggleVirtualSpring(net.minecraft.core.BlockPos.containing(g.x, g.y + 4.0, g.z), Material.WATER);
+					}
+					if (f == 80) {
+						me.skaffy.client.water.Hose.testHold(false);
+					}
+					if (f == 79 || f == 140) {
+						shot(mc, "rw-selftest-hose-" + f + ".png");
 					}
 				}
 				// -Drealisticwater.selftest.tnt=true (solids scene): TNT goes off next to the middle block once it settled.

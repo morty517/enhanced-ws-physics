@@ -201,7 +201,8 @@ public final class WaterWorld {
 	}
 
 	private static boolean isHost() {
-		return Minecraft.getInstance().getSingleplayerServer() != null;
+		// realisticwater.forceRemote: self tests of how the mod behaves on a server without it (nothing is written back).
+		return Minecraft.getInstance().getSingleplayerServer() != null && !Boolean.getBoolean("realisticwater.forceRemote");
 	}
 
 
@@ -288,6 +289,25 @@ public final class WaterWorld {
 		}
 		this.sources.add(source);
 		this.regionFor(source.pos(), material).claimBlock(source.pos());
+	}
+
+	/**
+	 * A spring that exists only in this client's simulation (no block behind it), so it works on any server. Returns true when
+	 * one was added, false when the spring already there was removed.
+	 */
+	public boolean toggleVirtualSpring(BlockPos pos, Material material) {
+		if (this.sources.removeIf(s -> s.pos().equals(pos))) {
+			return false;
+		}
+		this.addSource(pos, material);
+		return true;
+	}
+
+	/** Removes springs that have no spring block behind them (the ones placed with the hose key). */
+	public int clearVirtualSprings(ClientLevel level) {
+		int before = this.sources.size();
+		this.sources.removeIf(s -> !RealisticWaterBlock.isInfinite(level.getBlockState(s.pos())));
+		return before - this.sources.size();
 	}
 
 	private void removeSource(BlockPos pos) {
@@ -482,6 +502,7 @@ public final class WaterWorld {
 		}
 		if (!this.failed && Gl.ready()) {
 			this.carriers.tick(mc, level, this);
+			Hose.tick(mc, this);
 		}
 		for (int i = 0; i < 4 && !this.chunkScanQueue.isEmpty(); i++) {
 			this.scanChunk(level, this.chunkScanQueue.poll());

@@ -68,6 +68,31 @@ public final class WaterCommands {
 						}
 						return remove(c, m);
 					})))
+			.then(literal("hose")
+				.executes(c -> {
+					c.getSource().sendFeedback(Component.literal("Hose: " + Hose.material().id + ". Hold H to spray, sneak + H for a spring (only you see it)"));
+					return 1;
+				})
+				.then(argument("material", StringArgumentType.word())
+					.suggests((c, b) -> net.minecraft.commands.SharedSuggestionProvider.suggest(materialIds(false), b))
+					.executes(c -> {
+						String id = StringArgumentType.getString(c, "material");
+						Material m = Material.byId(id);
+						if (m == null) {
+							c.getSource().sendError(Component.literal("Unknown material " + id + " (" + String.join(", ", materialIds(false)) + ")"));
+							return 0;
+						}
+						Hose.select(m);
+						c.getSource().sendFeedback(Component.literal("Hose: " + m.id.replace('_', ' ') + ". Hold H to spray"
+							+ (m.fluid() ? ", sneak + H for a spring" : "") + " (only you see it)"));
+						return 1;
+					})))
+			.then(literal("springs")
+				.then(literal("clear").executes(c -> {
+					int n = WaterWorld.get().clearVirtualSprings(c.getSource().getWorld());
+					c.getSource().sendFeedback(Component.literal("Removed " + n + " hose springs"));
+					return 1;
+				})))
 			.then(literal("set")
 				.then(argument("name", StringArgumentType.word())
 					.suggests((c, b) -> SharedSuggestionProvider.suggest(WaterSettings.fields().keySet(), b))

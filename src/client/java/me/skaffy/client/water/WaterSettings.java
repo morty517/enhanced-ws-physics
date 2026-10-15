@@ -217,6 +217,9 @@ public final class WaterSettings {
 	public static boolean realisticSnowballs = true;
 	/** Edge of the lump of snow on a snowball, in blocks. */
 	public static float snowballSize = 0.3F;
+	/** Hose key (H): speed the material leaves at (blocks/s) and edge of the lump sprayed per tick (blocks). */
+	public static float hoseSpeed = 8.0F;
+	public static float hoseSize = 0.4F;
 	/** Explosions throw simulated material outwards (and break up breakable solids); multiplier on the blast speed, 0 = off. */
 	public static float explosionStrength = 1.0F;
 	/**

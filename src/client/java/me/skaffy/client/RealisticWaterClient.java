@@ -31,6 +31,7 @@ public class RealisticWaterClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> water.clear());
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> water.shutdown());
 		me.skaffy.client.water.Grabber.register();
+		me.skaffy.client.water.Hose.register();
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(me.skaffy.net.ExplosionPayload.TYPE,
 			(payload, context) -> context.client().execute(() ->
 				water.onExplosion(new net.minecraft.world.phys.Vec3(payload.x(), payload.y(), payload.z()), payload.radius(), true)));
