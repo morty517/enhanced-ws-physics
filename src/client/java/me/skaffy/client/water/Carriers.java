@@ -97,6 +97,7 @@ final class Carriers {
 			// Thrown out at up to ~3x the radius in blocks per second (TNT: ~18 blocks/s right next to it).
 			this.frame.add(new Carrier(b.center, Vec3.ZERO, b.radius, b.radius * 2.0F * WaterSettings.explosionStrength));
 		}
+		Link.addRemoteCarriers(this.frame);
 		Grabber.update(mc);
 		if (Grabber.active()) {
 			this.frame.add(new Carrier(Grabber.center(), Grabber.velocity(), Grabber.radius()));

@@ -108,6 +108,21 @@ see the material, nothing is written into the world. Items and blocks of the mod
   waterfalls. `/water springs clear` removes all of them. Hose springs live only in your simulation (gone on relog).
 - `hoseSpeed`, `hoseSize` via `/water set`.
 
+## Simulation link (play together on any server)
+
+Players with the mod can share their simulations over a separate connection, next to the Minecraft one (the server doesn't
+need to know):
+
+- One player: `/water link host <password> [port]` (default port 25599). Forward that TCP port, e.g. with playit.
+- Others: `/water link join <address:port> <password>`.
+- `/water link status`, `/water link stop`.
+
+What is shared: cubes from `/water spawn`, the hose, hose springs, `/water remove`, and the grab tool (you can see and feel
+each other's grab). Only these events travel, never particles, so it needs almost no bandwidth; every client simulates them
+itself, so splashes differ in detail but the picture is the same. Snowballs and explosions already reach everyone through
+the server. Incoming events are checked (materials, size up to 16 blocks, distance, a volume budget per player, at most 64
+springs per player, message rate), and joining needs the password.
+
 ## Explosions
 
 Explosions throw simulated material outwards and shatter breakable solids near them (`explosionStrength`, 0 = off). With

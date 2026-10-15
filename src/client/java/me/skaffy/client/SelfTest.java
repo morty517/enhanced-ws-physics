@@ -42,6 +42,31 @@ public final class SelfTest {
 	private static int grabFrame = -1;
 	/** -Drealisticwater.selftest.throw=true (solids scene): throw snowballs at the blocks. */
 	private static boolean tntFired;
+	private static int linkStage;
+	private static me.skaffy.client.link.LinkNet linkBot;
+
+	/** A SPAWN link message (see Link), built by hand like a peer would send it. */
+	private static byte[] linkSpawn(Minecraft mc, double x, double y, double z, float edge) {
+		try {
+			java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+			java.io.DataOutputStream out = new java.io.DataOutputStream(bytes);
+			out.writeByte(1);
+			out.writeUTF(mc.level.dimension().location().toString());
+			out.writeByte(Material.WATER.networkId());
+			out.writeDouble(x);
+			out.writeDouble(y);
+			out.writeDouble(z);
+			out.writeFloat(edge);
+			out.writeFloat(edge);
+			out.writeFloat(edge);
+			out.writeFloat(0.0F);
+			out.writeFloat(0.0F);
+			out.writeFloat(0.0F);
+			return bytes.toByteArray();
+		} catch (java.io.IOException e) {
+			throw new IllegalStateException(e);
+		}
+	}
 	private static boolean hoseStarted;
 	private static int tntLogged = -1;
 	private static final boolean THROW = Boolean.getBoolean("realisticwater.selftest.throw");
@@ -179,6 +204,34 @@ public final class SelfTest {
 					for (int k = 1; k <= 3; k++) {
 						Vec3 g = groundAhead(mc, 7.5, (k - 2) * 1.8);
 						mc.player.connection.sendCommand(String.format("setblock %d %d %d minecraft:stone", (int) Math.floor(g.x), (int) Math.floor(g.y), (int) Math.floor(g.z)));
+					}
+				}
+				// -Drealisticwater.selftest.link=true: host the simulation link, join it from a bot in this JVM and send a cube of
+				// water (accepted) and a far too big one (must be rejected).
+				if (Boolean.getBoolean("realisticwater.selftest.link")) {
+					int f = frames() - frameMark;
+					if (f >= 10 && linkStage == 0) {
+						linkStage = 1;
+						RealisticWater.LOGGER.warn("[selftest] {}", me.skaffy.client.water.Link.host(me.skaffy.client.link.LinkNet.DEFAULT_PORT, "test"));
+						linkBot = me.skaffy.client.link.LinkNet.join("127.0.0.1", me.skaffy.client.link.LinkNet.DEFAULT_PORT, "test", "Bot",
+							new me.skaffy.client.link.LinkNet.Listener() {
+								public void onMessage(int sender, String name, byte[] message) {
+								}
+
+								public void onEvent(String text) {
+									RealisticWater.LOGGER.warn("[selftest] bot: {}", text);
+								}
+							});
+					}
+					if (f >= 30 && linkStage == 1 && linkBot.isUp()) {
+						linkStage = 2;
+						RealisticWater.LOGGER.warn("[selftest] before link spawn | {}", WaterWorld.get().statsLine());
+						Vec3 g = groundAhead(mc, 6.0, 0.0);
+						linkBot.send(linkSpawn(mc, g.x - 1.5, g.y + 2.0, g.z - 1.5, 3.0F));
+						linkBot.send(linkSpawn(mc, g.x - 20, g.y + 2.0, g.z - 20, 40.0F));
+					}
+					if (linkStage == 2 && (f == 60 || f == 100)) {
+						RealisticWater.LOGGER.warn("[selftest] after link spawn ({}) | {}", me.skaffy.client.water.Link.status(), WaterWorld.get().statsLine());
 					}
 				}
 				// -Drealisticwater.selftest.hose=true: spray water for a while and put a hose spring up in the air ahead.

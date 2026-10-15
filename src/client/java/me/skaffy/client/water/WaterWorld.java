@@ -296,7 +296,19 @@ public final class WaterWorld {
 	 * one was added, false when the spring already there was removed.
 	 */
 	public boolean toggleVirtualSpring(BlockPos pos, Material material) {
-		if (this.sources.removeIf(s -> s.pos().equals(pos))) {
+		boolean add = this.sources.stream().noneMatch(s -> s.pos().equals(pos));
+		this.setVirtualSpring(pos, material, add);
+		Link.spring(pos, material, add);
+		return add;
+	}
+
+	/** Adds or removes a spring at pos without telling linked players; returns whether one was added. */
+	boolean setVirtualSpring(BlockPos pos, Material material, boolean add) {
+		if (!add) {
+			this.sources.removeIf(s -> s.pos().equals(pos));
+			return false;
+		}
+		if (this.sources.stream().anyMatch(s -> s.pos().equals(pos))) {
 			return false;
 		}
 		this.addSource(pos, material);
@@ -307,6 +319,7 @@ public final class WaterWorld {
 	public int clearVirtualSprings(ClientLevel level) {
 		int before = this.sources.size();
 		this.sources.removeIf(s -> !RealisticWaterBlock.isInfinite(level.getBlockState(s.pos())));
+		Link.springsClear();
 		return before - this.sources.size();
 	}
 
@@ -318,6 +331,12 @@ public final class WaterWorld {
 		if (ClientPlayNetworking.canSend(RemoveAllWaterPayload.TYPE)) {
 			ClientPlayNetworking.send(new RemoveAllWaterPayload(radiusChunks, material));
 		}
+		Link.remove(material);
+		this.removeAllLocal(radiusChunks, material);
+	}
+
+	/** Removes the material from this client's simulation only (a linked player asked for it). */
+	void removeAllLocal(int radiusChunks, Material material) {
 		// Materials share regions, so remove only the particles that are mostly this material.
 		for (WaterRegion r : this.regions) {
 			if (r.material == material.base() && r.hasWindow) {
@@ -503,6 +522,7 @@ public final class WaterWorld {
 		if (!this.failed && Gl.ready()) {
 			this.carriers.tick(mc, level, this);
 			Hose.tick(mc, this);
+			Link.tick(mc, this);
 		}
 		for (int i = 0; i < 4 && !this.chunkScanQueue.isEmpty(); i++) {
 			this.scanChunk(level, this.chunkScanQueue.poll());

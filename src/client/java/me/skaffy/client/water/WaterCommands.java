@@ -87,6 +87,19 @@ public final class WaterCommands {
 							+ (m.fluid() ? ", sneak + H for a spring" : "") + " (only you see it)"));
 						return 1;
 					})))
+			.then(literal("link")
+				.executes(c -> feedback(c, Link.status()))
+				.then(literal("status").executes(c -> feedback(c, Link.status())))
+				.then(literal("stop").executes(c -> feedback(c, Link.stop())))
+				.then(literal("host")
+					.then(argument("password", StringArgumentType.string())
+						.executes(c -> feedback(c, Link.host(me.skaffy.client.link.LinkNet.DEFAULT_PORT, StringArgumentType.getString(c, "password"))))
+						.then(argument("port", IntegerArgumentType.integer(1024, 65535))
+							.executes(c -> feedback(c, Link.host(IntegerArgumentType.getInteger(c, "port"), StringArgumentType.getString(c, "password")))))))
+				.then(literal("join")
+					.then(argument("address", StringArgumentType.string())
+						.then(argument("password", StringArgumentType.string())
+							.executes(c -> feedback(c, Link.join(StringArgumentType.getString(c, "address"), StringArgumentType.getString(c, "password"))))))))
 			.then(literal("springs")
 				.then(literal("clear").executes(c -> {
 					int n = WaterWorld.get().clearVirtualSprings(c.getSource().getWorld());
@@ -110,6 +123,11 @@ public final class WaterCommands {
 				.then(argument("seconds", DoubleArgumentType.doubleArg(0.05))
 					.executes(c -> render(c, 60))
 					.then(argument("fps", IntegerArgumentType.integer(1, 240)).executes(c -> render(c, IntegerArgumentType.getInteger(c, "fps")))))));
+	}
+
+	private static int feedback(CommandContext<FabricClientCommandSource> c, String text) {
+		c.getSource().sendFeedback(Component.literal(text));
+		return 1;
 	}
 
 	private static java.util.List<String> materialIds(boolean withAll) {
@@ -143,8 +161,10 @@ public final class WaterCommands {
 		var player = c.getSource().getPlayer();
 		Vec3 center = player.getEyePosition().add(player.getLookAngle().scale(size + 3.0));
 		double half = size * 0.5;
-		WaterWorld.get().addEmitter(new WaterRegion.Emitter(
-			center.x - half, center.y - half, center.z - half, center.x + half, center.y + half, center.z + half, 0, 0, 0), material);
+		WaterRegion.Emitter e = new WaterRegion.Emitter(
+			center.x - half, center.y - half, center.z - half, center.x + half, center.y + half, center.z + half, 0, 0, 0);
+		WaterWorld.get().addEmitter(e, material);
+		Link.spawn(e, material);
 		c.getSource().sendFeedback(Component.literal("Dropped a " + size + "^3 block cube of " + material.id.replace('_', ' ')));
 		return 1;
 	}

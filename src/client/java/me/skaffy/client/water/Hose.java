@@ -71,8 +71,10 @@ public final class Hose {
 		Vec3 start = mc.player.getEyePosition().add(look.scale(1.2)).add(0.0, -0.3, 0.0);
 		Vec3 vel = look.scale(WaterSettings.hoseSpeed).add(mc.player.getDeltaMovement().scale(20.0));
 		double h = WaterSettings.hoseSize * 0.5;
-		world.addEmitter(new WaterRegion.Emitter(start.x - h, start.y - h, start.z - h, start.x + h, start.y + h, start.z + h,
-			(float) vel.x, (float) vel.y, (float) vel.z), material);
+		WaterRegion.Emitter e = new WaterRegion.Emitter(start.x - h, start.y - h, start.z - h, start.x + h, start.y + h, start.z + h,
+			(float) vel.x, (float) vel.y, (float) vel.z);
+		world.addEmitter(e, material);
+		Link.spawn(e, material);
 	}
 
 	/** Puts a spring of the selected fluid in the air block in front of the block you look at, or removes the one there. */

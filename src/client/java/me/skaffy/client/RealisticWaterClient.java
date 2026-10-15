@@ -29,7 +29,10 @@ public class RealisticWaterClient implements ClientModInitializer {
 		ClientChunkEvents.CHUNK_UNLOAD.register(water::onChunkUnload);
 		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents.ENTITY_UNLOAD.register((entity, level) -> water.onEntityUnload(entity));
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> water.clear());
-		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> water.shutdown());
+		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+			me.skaffy.client.water.Link.stop();
+			water.shutdown();
+		});
 		me.skaffy.client.water.Grabber.register();
 		me.skaffy.client.water.Hose.register();
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(me.skaffy.net.ExplosionPayload.TYPE,
