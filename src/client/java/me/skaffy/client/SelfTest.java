@@ -43,6 +43,7 @@ public final class SelfTest {
 	/** -Drealisticwater.selftest.throw=true (solids scene): throw snowballs at the blocks. */
 	private static boolean tntFired;
 	private static int linkStage;
+	private static int echoStage;
 	private static me.skaffy.client.link.LinkNet linkBot;
 
 	/** A SPAWN link message (see Link), built by hand like a peer would send it. */
@@ -204,6 +205,28 @@ public final class SelfTest {
 					for (int k = 1; k <= 3; k++) {
 						Vec3 g = groundAhead(mc, 7.5, (k - 2) * 1.8);
 						mc.player.connection.sendCommand(String.format("setblock %d %d %d minecraft:stone", (int) Math.floor(g.x), (int) Math.floor(g.y), (int) Math.floor(g.z)));
+					}
+				}
+				// -Drealisticwater.selftest.echo=true (with forceRemote): while linked, a block write announced as a host echo is
+				// ignored, an unannounced one still adds material.
+				if (Boolean.getBoolean("realisticwater.selftest.echo")) {
+					int f = frames() - frameMark;
+					if (f >= 10 && echoStage == 0) {
+						echoStage = 1;
+						RealisticWater.LOGGER.warn("[selftest] {}", me.skaffy.client.water.Link.host(me.skaffy.client.link.LinkNet.DEFAULT_PORT + 1, "test"));
+					}
+					if (f >= 40 && echoStage == 1) {
+						echoStage = 2;
+						RealisticWater.LOGGER.warn("[selftest] before echo | {}", WaterWorld.get().statsLine());
+						var a = net.minecraft.core.BlockPos.containing(groundAhead(mc, 4.0, -6.0)).above(3);
+						var b = a.east(2);
+						WaterWorld.get().onHostEcho(new me.skaffy.net.SimEchoPayload(Material.SAND.networkId(), new long[]{a.asLong()}, new byte[]{8}));
+						mc.player.connection.sendCommand(String.format("setblock %d %d %d realistic-water:realistic_sand", a.getX(), a.getY(), a.getZ()));
+						mc.player.connection.sendCommand(String.format("setblock %d %d %d realistic-water:realistic_sand", b.getX(), b.getY(), b.getZ()));
+					}
+					if (echoStage == 2 && f >= 80) {
+						echoStage = 3;
+						RealisticWater.LOGGER.warn("[selftest] after echo | {}", WaterWorld.get().statsLine());
 					}
 				}
 				// -Drealisticwater.selftest.link=true: host the simulation link, join it from a bot in this JVM and send a cube of

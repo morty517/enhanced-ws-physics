@@ -153,6 +153,22 @@ public final class WaterWorld {
 	private int lastSandSteps;
 	private float lastSandDt;
 
+	/**
+	 * The host's simulation is writing these blocks. With the simulation link up we already simulate the same material from the
+	 * link's events, so these block changes are expected and ignored; adding them too would duplicate the material (worst for
+	 * granular materials: every block a stray grain lies in would turn into a new heap).
+	 */
+	public void onHostEcho(me.skaffy.net.SimEchoPayload payload) {
+		Material m = Material.byNetworkId(payload.material());
+		if (m == null || !Link.linked() || isHost()) {
+			return;
+		}
+		Echoes e = this.echoes(m);
+		for (int i = 0; i < payload.positions().length; i++) {
+			e.expect(payload.positions()[i], payload.amounts()[i], this.frameCounter);
+		}
+	}
+
 	/** An explosion (exact: radius from the server; otherwise guessed from the vanilla packet). */
 	public void onExplosion(Vec3 center, float radius, boolean exact) {
 		this.carriers.explode(center, radius, exact);

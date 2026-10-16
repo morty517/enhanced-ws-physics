@@ -136,6 +136,11 @@ public final class Link {
 		};
 	}
 
+	/** Linked to someone (host or joined), so the simulation is shared through the link. */
+	static boolean linked() {
+		return active();
+	}
+
 	private static boolean active() {
 		return net != null && net.isUp();
 	}

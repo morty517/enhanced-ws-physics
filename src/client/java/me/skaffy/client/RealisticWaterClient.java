@@ -35,6 +35,10 @@ public class RealisticWaterClient implements ClientModInitializer {
 		});
 		me.skaffy.client.water.Grabber.register();
 		me.skaffy.client.water.Hose.register();
+		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(me.skaffy.net.SimEchoPayload.TYPE,
+			// Fabric runs payload handlers on the client thread, in order with vanilla packets: handle it right away, before the
+			// block updates it announces (deferring it with execute() would queue it behind them).
+			(payload, context) -> water.onHostEcho(payload));
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(me.skaffy.net.ExplosionPayload.TYPE,
 			(payload, context) -> context.client().execute(() ->
 				water.onExplosion(new net.minecraft.world.phys.Vec3(payload.x(), payload.y(), payload.z()), payload.radius(), true)));

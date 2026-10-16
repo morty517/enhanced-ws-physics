@@ -3,6 +3,7 @@ package me.skaffy;
 import me.skaffy.net.ExplosionPayload;
 import me.skaffy.net.MaterialSyncPayload;
 import me.skaffy.net.RemoveAllWaterPayload;
+import me.skaffy.net.SimEchoPayload;
 import me.skaffy.net.SolidifyPayload;
 import net.minecraft.network.chat.Component;
 import net.fabricmc.api.ModInitializer;
@@ -26,6 +27,7 @@ public class RealisticWater implements ModInitializer {
 		PayloadTypeRegistry.playC2S().register(RemoveAllWaterPayload.TYPE, RemoveAllWaterPayload.CODEC);
 		PayloadTypeRegistry.playC2S().register(SolidifyPayload.TYPE, SolidifyPayload.CODEC);
 		PayloadTypeRegistry.playS2C().register(ExplosionPayload.TYPE, ExplosionPayload.CODEC);
+		PayloadTypeRegistry.playS2C().register(SimEchoPayload.TYPE, SimEchoPayload.CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(SolidifyPayload.TYPE, (payload, context) -> {
 			if (isAuthority(context.server(), context.player())) {
 				context.server().execute(() -> payload.apply(context.player()));
@@ -33,7 +35,16 @@ public class RealisticWater implements ModInitializer {
 		});
 		ServerPlayNetworking.registerGlobalReceiver(MaterialSyncPayload.TYPE, (payload, context) -> {
 			if (isAuthority(context.server(), context.player())) {
-				context.server().execute(() -> payload.apply(context.player()));
+				context.server().execute(() -> {
+					// Tell the other players first (block updates only go out at the end of the tick), so linked ones can ignore them.
+					SimEchoPayload echo = new SimEchoPayload(payload.material(), payload.positions(), payload.amounts());
+					for (ServerPlayer other : context.player().level().players()) {
+						if (other != context.player() && ServerPlayNetworking.canSend(other, SimEchoPayload.TYPE)) {
+							ServerPlayNetworking.send(other, echo);
+						}
+					}
+					payload.apply(context.player());
+				});
 			}
 		});
 		ServerPlayNetworking.registerGlobalReceiver(RemoveAllWaterPayload.TYPE, (payload, context) -> {
