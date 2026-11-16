@@ -1,0 +1,30 @@
+name: EnhancedWSRelay
+version: '${version}'
+main: me.morty517.enhancedws.EnhancedWSRelay
+api-version: '1.21'
+description: Shares Enhanced WS Physics simulations between players (spawns, hose, springs, grab) and sets their resolution.
+authors: [morty517, Claude by Anthropic]
+commands:
+  ews:
+    description: Enhanced WS Physics relay admin
+    usage: /ews <status|resolution|limit|clear|springs|toggle|reload>
+    permission: enhancedws.admin
+permissions:
+  enhancedws.use:
+    description: Share your simulation with others (spawns, hose)
+    default: true
+  enhancedws.grab:
+    description: Others see and feel your grab tool
+    default: true
+  enhancedws.spring:
+    description: Place hose springs that everyone sees (and that persist on the server)
+    default: true
+  enhancedws.remove:
+    description: /water remove clears the material for everyone in the world, not just you
+    default: op
+  enhancedws.spawn.unlimited:
+    description: No particle limit
+    default: op
+  enhancedws.admin:
+    description: /ews commands, removing other players' springs, no spring cap
+    default: op

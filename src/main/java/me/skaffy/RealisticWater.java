@@ -28,6 +28,8 @@ public class RealisticWater implements ModInitializer {
 		PayloadTypeRegistry.playC2S().register(SolidifyPayload.TYPE, SolidifyPayload.CODEC);
 		PayloadTypeRegistry.playS2C().register(ExplosionPayload.TYPE, ExplosionPayload.CODEC);
 		PayloadTypeRegistry.playS2C().register(SimEchoPayload.TYPE, SimEchoPayload.CODEC);
+		PayloadTypeRegistry.playC2S().register(me.skaffy.net.LinkPayload.TYPE, me.skaffy.net.LinkPayload.CODEC);
+		PayloadTypeRegistry.playS2C().register(me.skaffy.net.LinkPayload.TYPE, me.skaffy.net.LinkPayload.CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(SolidifyPayload.TYPE, (payload, context) -> {
 			if (isAuthority(context.server(), context.player())) {
 				context.server().execute(() -> payload.apply(context.player()));

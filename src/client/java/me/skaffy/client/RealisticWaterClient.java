@@ -35,6 +35,10 @@ public class RealisticWaterClient implements ClientModInitializer {
 		});
 		me.skaffy.client.water.Grabber.register();
 		me.skaffy.client.water.Hose.register();
+		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(me.skaffy.net.LinkPayload.TYPE,
+			(payload, context) -> me.skaffy.client.water.Link.onServerMessage(payload.data()));
+		net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register(
+			(handler, client) -> client.execute(me.skaffy.client.water.Link::onServerDisconnect));
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(me.skaffy.net.SimEchoPayload.TYPE,
 			// Fabric runs payload handlers on the client thread, in order with vanilla packets: handle it right away, before the
 			// block updates it announces (deferring it with execute() would queue it behind them).

@@ -43,6 +43,16 @@ public final class SelfTest {
 	/** -Drealisticwater.selftest.throw=true (solids scene): throw snowballs at the blocks. */
 	private static boolean tntFired;
 	private static int linkStage;
+	private static int relayStage;
+
+	/** Like /water spawn: drops a cube locally and shares it (server plugin or link). */
+	private static void relaySpawn(Minecraft mc, Material m, float edge, Vec3 ground) {
+		double h = edge / 2.0;
+		Vec3 c = ground.add(0.0, h + 0.5, 0.0);
+		var e = new me.skaffy.client.water.WaterRegion.Emitter(c.x - h, c.y - h, c.z - h, c.x + h, c.y + h, c.z + h, 0, 0, 0);
+		WaterWorld.get().addEmitter(e, m);
+		me.skaffy.client.water.Link.share(e, m);
+	}
 	private static int echoStage;
 	private static me.skaffy.client.link.LinkNet linkBot;
 
@@ -103,7 +113,17 @@ public final class SelfTest {
 		switch (stage) {
 			case TITLE -> {
 				// First launches open the accessibility onboarding screen instead of the title screen; any menu will do.
-				if (mc.level == null && mc.getOverlay() == null && mc.screen != null && ticks > 40) {
+				String server = System.getProperty("realisticwater.selftest.server");
+				if (server != null && mc.level == null && mc.getOverlay() == null && mc.screen != null && ticks > 40) {
+					// Join a running server instead of making a world (testing the EnhancedWSRelay plugin).
+					RealisticWater.LOGGER.warn("[selftest] joining server {}", server);
+					net.minecraft.client.gui.screens.ConnectScreen.startConnecting(mc.screen, mc,
+						net.minecraft.client.multiplayer.resolver.ServerAddress.parseString(server),
+						new net.minecraft.client.multiplayer.ServerData("selftest", server, net.minecraft.client.multiplayer.ServerData.Type.OTHER),
+						false, null);
+					stage = Stage.LOADING;
+					ticks = 0;
+				} else if (server == null && mc.level == null && mc.getOverlay() == null && mc.screen != null && ticks > 40) {
 					String name = "rw-selftest-" + System.currentTimeMillis();
 					RealisticWater.LOGGER.warn("[selftest] creating flat world {}", name);
 					LevelSettings settings = new LevelSettings(name, GameType.CREATIVE, false, Difficulty.PEACEFUL, true,
@@ -126,7 +146,7 @@ public final class SelfTest {
 			case SETTLE -> {
 				mc.player.setYRot(0.0F);
 				mc.player.setXRot(PITCH);
-				if (ticks == 1) {
+				if (ticks == 1 && System.getProperty("realisticwater.selftest.server") == null) {
 					// Changing the resolution makes WaterWorld rebuild (and drop) every region on its next tick, so do it well before
 					// spawning anything.
 					set("resolution", System.getProperty("realisticwater.selftest.resolution", "4"));
@@ -205,6 +225,27 @@ public final class SelfTest {
 					for (int k = 1; k <= 3; k++) {
 						Vec3 g = groundAhead(mc, 7.5, (k - 2) * 1.8);
 						mc.player.connection.sendCommand(String.format("setblock %d %d %d minecraft:stone", (int) Math.floor(g.x), (int) Math.floor(g.y), (int) Math.floor(g.z)));
+					}
+				}
+				// -Drealisticwater.selftest.relay=true (with .server and the plugin's debug-echo): resolution comes from the server, a
+				// small cube is shared and echoed back (doubles), a cube over the particle limit is refused.
+				if (Boolean.getBoolean("realisticwater.selftest.relay")) {
+					int f = frames() - frameMark;
+					if (f >= 20 && relayStage == 0) {
+						relayStage = 1;
+						RealisticWater.LOGGER.warn("[selftest] relay: resolution water {} sand {} | {} | {}", me.skaffy.client.water.WaterSettings.resolution,
+							me.skaffy.client.water.WaterSettings.sandResolution, me.skaffy.client.water.Link.status(), WaterWorld.get().statsLine());
+						relaySpawn(mc, Material.WATER, 3.0F, groundAhead(mc, 6.0, -4.0));
+					}
+					if (f >= 70 && relayStage == 1) {
+						relayStage = 2;
+						RealisticWater.LOGGER.warn("[selftest] relay: after small cube | {}", WaterWorld.get().statsLine());
+						relaySpawn(mc, Material.WATER, 5.0F, groundAhead(mc, 6.0, 4.0));
+					}
+					if (f >= 120 && relayStage == 2) {
+						relayStage = 3;
+						RealisticWater.LOGGER.warn("[selftest] relay: after big cube | {}", WaterWorld.get().statsLine());
+						shot(mc, "rw-selftest-relay.png");
 					}
 				}
 				// -Drealisticwater.selftest.echo=true (with forceRemote): while linked, a block write announced as a host echo is

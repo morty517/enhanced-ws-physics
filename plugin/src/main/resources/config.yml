@@ -1,0 +1,22 @@
+# Enhanced WS Physics relay
+enabled: true
+
+# Simulation resolution every player with the mod gets (cells per block; the mod's own defaults are water 6, sand 12).
+# Same resolution for everyone = the same amount of particles everywhere = everyone sees the same thing.
+# 0 = leave it to each player. Higher = prettier and much heavier (cost grows with the cube of it).
+water-resolution: 6
+sand-resolution: 8
+
+# Particles a player may add per second (the biggest single drop is capped by it too).
+# Per player override with a permission: enhancedws.spawn.limit.<number>, e.g. enhancedws.spawn.limit.5000
+# (the highest one a player has wins). enhancedws.spawn.unlimited removes the limit.
+default-limit: 50000
+
+# Hose springs per player (admins have no cap). Springs are kept on the server and shown to everyone, also after relog.
+max-springs: 16
+
+# Events are only sent to players within this many blocks of them.
+relay-distance: 160
+
+# Testing only: also send every event back to the player who sent it.
+debug-echo: false

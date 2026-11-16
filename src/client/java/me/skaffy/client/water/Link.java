@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import me.skaffy.Material;
 import me.skaffy.client.link.LinkNet;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -46,7 +47,8 @@ public final class Link {
 	private static final float MAX_CARRIER_RADIUS = 4.0F;
 	private static final long CARRIER_TIMEOUT_NANOS = 300_000_000L;
 
-	private record Incoming(int sender, String name, byte[] message) {
+	/** key: "n<id>" for link peers, "s<id>" for players relayed by the server plugin. trusted: checked by the server already. */
+	private record Incoming(String key, String name, byte[] message, boolean trusted) {
 	}
 
 	private static final class PeerState {
@@ -62,7 +64,14 @@ public final class Link {
 	private static @Nullable LinkNet net;
 	private static final ConcurrentLinkedQueue<Incoming> inbox = new ConcurrentLinkedQueue<>();
 	private static final ConcurrentLinkedQueue<String> notices = new ConcurrentLinkedQueue<>();
-	private static final Map<Integer, PeerState> peers = new HashMap<>();
+	private static final Map<String, PeerState> peers = new HashMap<>();
+	// Server plugin (EnhancedWSRelay) messages.
+	private static final byte K_RELAY = 0;
+	private static final byte K_SETTINGS = 1;
+	private static final byte K_NOTICE = 2;
+	/** The player's own resolutions, put back when they leave a server that set them. */
+	private static int ownWaterRes = -1;
+	private static int ownSandRes = -1;
 	private static boolean grabSent;
 
 	private Link() {
@@ -110,14 +119,15 @@ public final class Link {
 	}
 
 	public static String status() {
+		String server = serverRelay() ? "Server relay (EnhancedWSRelay): on, events go to everyone on this server with the mod. " : "";
 		if (net == null || net.isClosed()) {
-			return "Simulation link: off";
+			return server + "Simulation link: off";
 		}
 		if (net.isHost()) {
 			List<String> names = net.peerNames();
-			return "Simulation link: hosting, " + names.size() + " joined" + (names.isEmpty() ? "" : " (" + String.join(", ", names) + ")");
+			return server + "Simulation link: hosting, " + names.size() + " joined" + (names.isEmpty() ? "" : " (" + String.join(", ", names) + ")");
 		}
-		return "Simulation link: " + (net.isUp() ? "connected" : "connecting...");
+		return server + "Simulation link: " + (net.isUp() ? "connected" : "connecting...");
 	}
 
 	private static LinkNet.Listener listener() {
@@ -125,7 +135,7 @@ public final class Link {
 			@Override
 			public void onMessage(int sender, String senderName, byte[] message) {
 				if (inbox.size() < 4096) {
-					inbox.add(new Incoming(sender, senderName, message));
+					inbox.add(new Incoming("n" + sender, senderName, message, false));
 				}
 			}
 
@@ -142,7 +152,76 @@ public final class Link {
 	}
 
 	private static boolean active() {
-		return net != null && net.isUp();
+		return serverRelay() || net != null && net.isUp();
+	}
+
+	/** The server runs the EnhancedWSRelay plugin: events go through it to everyone on the server with the mod. */
+	private static boolean serverRelay() {
+		return Minecraft.getInstance().getConnection() != null
+			&& ClientPlayNetworking.canSend(me.skaffy.net.LinkPayload.TYPE);
+	}
+
+	/** A message from the server plugin (client thread). */
+	public static void onServerMessage(byte[] data) {
+		if (data.length == 0) {
+			return;
+		}
+		Minecraft mc = Minecraft.getInstance();
+		try {
+			DataInputStream in = new DataInputStream(new ByteArrayInputStream(data));
+			switch (in.readByte()) {
+				case K_RELAY -> {
+					int sender = in.readInt();
+					String name = in.readUTF();
+					byte[] message = in.readAllBytes();
+					if (inbox.size() < 4096 && message.length > 0) {
+						inbox.add(new Incoming("s" + sender, name, message, true));
+					}
+				}
+				case K_SETTINGS -> {
+					int water = in.readInt();
+					int sand = in.readInt();
+					int limit = in.readInt();
+					applyServerResolution(mc, water, sand, limit);
+				}
+				case K_NOTICE -> {
+					String text = in.readUTF();
+					if (mc.player != null) {
+						mc.player.displayClientMessage(Component.literal(text), true);
+					}
+				}
+				default -> {
+				}
+			}
+		} catch (IOException | RuntimeException e) {
+			// malformed: ignore
+		}
+	}
+
+	private static void applyServerResolution(Minecraft mc, int water, int sand, int limit) {
+		if (ownWaterRes < 0) {
+			ownWaterRes = WaterSettings.resolution;
+			ownSandRes = WaterSettings.sandResolution;
+		}
+		WaterSettings.resolution = water > 0 ? Math.clamp(water, 2, 16) : ownWaterRes;
+		WaterSettings.sandResolution = water > 0 || sand > 0 ? (sand > 0 ? Math.clamp(sand, 2, 16) : ownSandRes) : ownSandRes;
+		if (mc.player != null) {
+			mc.player.displayClientMessage(Component.literal("This server shares simulations (EnhancedWSRelay): resolution water "
+				+ WaterSettings.resolution + ", sand " + WaterSettings.sandResolution
+				+ (limit >= 0 ? ", your limit " + limit + " particles/s" : "")), false);
+		}
+	}
+
+	/** Left the server: back to the player's own resolutions, forget the server's players. */
+	public static void onServerDisconnect() {
+		if (ownWaterRes >= 0) {
+			WaterSettings.resolution = ownWaterRes;
+			WaterSettings.sandResolution = ownSandRes;
+			ownWaterRes = -1;
+			ownSandRes = -1;
+		}
+		peers.keySet().removeIf(k -> k.startsWith("s"));
+		inbox.removeIf(i -> i.trusted);
 	}
 
 	private static String playerName() {
@@ -155,6 +234,11 @@ public final class Link {
 	}
 
 	// ---- Outgoing (called where the local player does something) ----
+
+	/** Self tests: share a spawn like /water spawn does. */
+	public static void share(WaterRegion.Emitter e, Material material) {
+		spawn(e, material);
+	}
 
 	static void spawn(WaterRegion.Emitter e, Material material) {
 		if (!active()) {
@@ -217,7 +301,12 @@ public final class Link {
 		try {
 			ByteArrayOutputStream bytes = new ByteArrayOutputStream(64);
 			writer.write(new DataOutputStream(bytes));
-			net.send(bytes.toByteArray());
+			// Through the server plugin when there is one (everyone on the server gets it), otherwise over the player link.
+			if (serverRelay()) {
+				ClientPlayNetworking.send(new me.skaffy.net.LinkPayload(bytes.toByteArray()));
+			} else if (net != null) {
+				net.send(bytes.toByteArray());
+			}
 		} catch (IOException ignored) {
 		}
 	}
@@ -287,7 +376,7 @@ public final class Link {
 		if (mc.player == null || mc.level == null) {
 			return;
 		}
-		PeerState peer = peers.computeIfAbsent(in.sender, k -> new PeerState());
+		PeerState peer = peers.computeIfAbsent(in.key, k -> new PeerState());
 		peer.name = in.name;
 		DataInputStream data = new DataInputStream(new ByteArrayInputStream(in.message));
 		byte type = data.readByte();
@@ -311,7 +400,7 @@ public final class Link {
 					return;
 				}
 				double volume = (double) sx * sy * sz;
-				if (!budget(peer, volume)) {
+				if (!in.trusted && !budget(peer, volume)) {
 					if (!peer.warned) {
 						peer.warned = true;
 						mc.player.displayClientMessage(Component.literal("Link: " + peer.name + " is spawning too much, skipping some of it"), false);

@@ -123,6 +123,23 @@ itself, so splashes differ in detail but the picture is the same. Snowballs and 
 the server. Incoming events are checked (materials, size up to 16 blocks, distance, a volume budget per player, at most 64
 springs per player, message rate), and joining needs the password.
 
+## Server plugin: EnhancedWSRelay (Paper / Purpur 1.21.8)
+
+`plugin/` is a small server plugin that does what the simulation link does, over the normal Minecraft connection: everyone on
+the server with the mod shares spawns, the hose, springs and the grab tool, without ports, playit or passwords. Players without
+the mod are unaffected. It also sets everyone's simulation resolution, so everyone has the same particles.
+
+Build: `./gradlew -p plugin build` (jar in `plugin/build/libs/`), drop it into `plugins/`. Works behind Velocity (plugin
+messages are passed through).
+
+- `config.yml`: `water-resolution`, `sand-resolution` (0 = each player's own), `default-limit` (particles per second per
+  player, also the biggest single drop), `max-springs`, `relay-distance`.
+- Permissions: `enhancedws.use`, `enhancedws.grab`, `enhancedws.spring` (all default true), `enhancedws.remove` (op: your
+  `/water remove` clears it for everyone), `enhancedws.spawn.limit.<n>` (per player limit, the highest wins),
+  `enhancedws.spawn.unlimited` (op), `enhancedws.material.<id>` (set false to forbid e.g. `lava`), `enhancedws.admin` (op).
+- `/ews status | resolution <water|sand> <n|off> | limit <n> | clear [all] | springs clear [player] | toggle | reload`
+- Hose springs are kept by the server (`springs.yml`) and shown to everyone, also after relog and restarts.
+
 ## Explosions
 
 Explosions throw simulated material outwards and shatter breakable solids near them (`explosionStrength`, 0 = off). With
