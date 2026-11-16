@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "me.morty517"
-version = "1.0.0"
+version = "1.0.1"
 
 repositories {
 	// Paper's repository mirrors Maven Central too; listed first so builds don't depend on Central's rate limits.

@@ -37,6 +37,8 @@ public class RealisticWaterClient implements ClientModInitializer {
 		me.skaffy.client.water.Hose.register();
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(me.skaffy.net.LinkPayload.TYPE,
 			(payload, context) -> me.skaffy.client.water.Link.onServerMessage(payload.data()));
+		net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register(
+			(handler, sender, client) -> client.execute(me.skaffy.client.water.Link::onServerJoin));
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register(
 			(handler, client) -> client.execute(me.skaffy.client.water.Link::onServerDisconnect));
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(me.skaffy.net.SimEchoPayload.TYPE,

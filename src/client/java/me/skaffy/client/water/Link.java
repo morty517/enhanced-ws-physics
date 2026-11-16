@@ -71,6 +71,11 @@ public final class Link {
 	private static final byte K_NOTICE = 2;
 	/** The player's own resolutions, put back when they leave a server that set them. */
 	private static int ownWaterRes = -1;
+	private static final byte HELLO = 64;
+	/** The server plugin answered (it sent settings), so it is there even if the channel registration got lost on a proxy. */
+	private static boolean serverConfirmed;
+	private static int helloSent;
+	private static long joinedNanos;
 	private static int ownSandRes = -1;
 	private static boolean grabSent;
 
@@ -158,7 +163,7 @@ public final class Link {
 	/** The server runs the EnhancedWSRelay plugin: events go through it to everyone on the server with the mod. */
 	private static boolean serverRelay() {
 		return Minecraft.getInstance().getConnection() != null
-			&& ClientPlayNetworking.canSend(me.skaffy.net.LinkPayload.TYPE);
+			&& (serverConfirmed || ClientPlayNetworking.canSend(me.skaffy.net.LinkPayload.TYPE));
 	}
 
 	/** A message from the server plugin (client thread). */
@@ -179,6 +184,7 @@ public final class Link {
 					}
 				}
 				case K_SETTINGS -> {
+					serverConfirmed = true;
 					int water = in.readInt();
 					int sand = in.readInt();
 					int limit = in.readInt();
@@ -212,8 +218,36 @@ public final class Link {
 		}
 	}
 
+	/**
+	 * Joined a server (or switched servers behind a proxy): say hello on the plugin channel. A plain Paper server already knows
+	 * the mod from the channel registration; behind Velocity that registration doesn't reach it, so this is how it finds out.
+	 * Servers without the plugin ignore it.
+	 */
+	public static void onServerJoin() {
+		serverConfirmed = false;
+		helloSent = 0;
+		joinedNanos = System.nanoTime();
+	}
+
+	private static void sayHello() {
+		// After 1, 3 and 8 seconds, until the plugin answers.
+		long[] at = {1_000_000_000L, 3_000_000_000L, 8_000_000_000L};
+		if (serverConfirmed || helloSent >= at.length || Minecraft.getInstance().getConnection() == null
+			|| System.nanoTime() - joinedNanos < at[helloSent]) {
+			return;
+		}
+		helloSent++;
+		try {
+			ClientPlayNetworking.send(new me.skaffy.net.LinkPayload(new byte[] {HELLO, 0, 0, 0, 1}));
+		} catch (RuntimeException ignored) {
+			// not connected after all
+		}
+	}
+
 	/** Left the server: back to the player's own resolutions, forget the server's players. */
 	public static void onServerDisconnect() {
+		serverConfirmed = false;
+		helloSent = Integer.MAX_VALUE;
 		if (ownWaterRes >= 0) {
 			WaterSettings.resolution = ownWaterRes;
 			WaterSettings.sandResolution = ownSandRes;
@@ -324,6 +358,7 @@ public final class Link {
 			net = null;
 			peers.clear();
 		}
+		sayHello();
 		if (active()) {
 			if (Grabber.active()) {
 				Vec3 c = Grabber.center();

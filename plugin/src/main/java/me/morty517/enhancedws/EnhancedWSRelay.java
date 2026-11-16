@@ -51,6 +51,11 @@ public final class EnhancedWSRelay extends JavaPlugin implements PluginMessageLi
 	private static final byte SPRING = 4;
 	private static final byte SPRINGS_CLEAR = 5;
 	private static final byte REMOVE = 6;
+	/**
+	 * The mod says hello after joining. Needed behind Velocity: the client announces the channel while connecting to the proxy,
+	 * and the proxy doesn't pass that on to this server, so the player would never count as having the mod.
+	 */
+	private static final byte HELLO = 64;
 
 	// Messages to players: [kind] ...
 	private static final byte K_RELAY = 0;    // int sender id, UTF sender name, message
@@ -168,6 +173,22 @@ public final class EnhancedWSRelay extends JavaPlugin implements PluginMessageLi
 		}
 	}
 
+	/**
+	 * Makes the server treat the player as listening on the channel (CraftPlayer.addChannel, which also fires
+	 * PlayerRegisterChannelEvent and so greets them). There is no API for it; without it the server drops every message to them.
+	 */
+	private void adopt(Player p) {
+		if (p.getListeningPluginChannels().contains(CHANNEL)) {
+			return;
+		}
+		try {
+			p.getClass().getMethod("addChannel", String.class).invoke(p, CHANNEL);
+			this.getLogger().info(p.getName() + " has the mod (said hello on the channel)");
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			this.getLogger().warning("Couldn't register the channel for " + p.getName() + ": " + e);
+		}
+	}
+
 	private void greet(Player p) {
 		this.sendSettings(p);
 		this.sendSprings(p);
@@ -214,7 +235,17 @@ public final class EnhancedWSRelay extends JavaPlugin implements PluginMessageLi
 		DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes));
 		byte type = in.readByte();
 		String dim = worldKey(player.getWorld());
+		if (type != HELLO && !player.getListeningPluginChannels().contains(CHANNEL)) {
+			this.adopt(player); // talking to us on the channel, so it has the mod
+		}
 		switch (type) {
+			case HELLO -> {
+				boolean known = player.getListeningPluginChannels().contains(CHANNEL);
+				this.adopt(player);
+				if (known) {
+					this.greet(player); // already registered (no proxy, or registered later): just answer
+				}
+			}
 			case SPAWN -> {
 				if (!in.readUTF().equals(dim)) {
 					return;
