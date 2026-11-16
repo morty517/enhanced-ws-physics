@@ -96,10 +96,17 @@ public final class WaterCommands {
 						.executes(c -> feedback(c, Link.host(me.skaffy.client.link.LinkNet.DEFAULT_PORT, StringArgumentType.getString(c, "password"))))
 						.then(argument("port", IntegerArgumentType.integer(1024, 65535))
 							.executes(c -> feedback(c, Link.host(IntegerArgumentType.getInteger(c, "port"), StringArgumentType.getString(c, "password")))))))
+				// "address password" as one greedy argument: an unquoted brigadier string stops at ':', so host:port wouldn't parse.
 				.then(literal("join")
-					.then(argument("address", StringArgumentType.string())
-						.then(argument("password", StringArgumentType.string())
-							.executes(c -> feedback(c, Link.join(StringArgumentType.getString(c, "address"), StringArgumentType.getString(c, "password"))))))))
+					.then(argument("address and password", StringArgumentType.greedyString())
+						.executes(c -> {
+							String[] parts = StringArgumentType.getString(c, "address and password").trim().split("\\s+", 2);
+							if (parts.length < 2) {
+								c.getSource().sendError(Component.literal("Usage: /water link join <address:port> <password>"));
+								return 0;
+							}
+							return feedback(c, Link.join(unquote(parts[0]), unquote(parts[1].trim())));
+						}))))
 			.then(literal("springs")
 				.then(literal("clear").executes(c -> {
 					int n = WaterWorld.get().clearVirtualSprings(c.getSource().getWorld());
@@ -123,6 +130,10 @@ public final class WaterCommands {
 				.then(argument("seconds", DoubleArgumentType.doubleArg(0.05))
 					.executes(c -> render(c, 60))
 					.then(argument("fps", IntegerArgumentType.integer(1, 240)).executes(c -> render(c, IntegerArgumentType.getInteger(c, "fps")))))));
+	}
+
+	private static String unquote(String s) {
+		return s.length() >= 2 && s.startsWith("\"") && s.endsWith("\"") ? s.substring(1, s.length() - 1) : s;
 	}
 
 	private static int feedback(CommandContext<FabricClientCommandSource> c, String text) {
